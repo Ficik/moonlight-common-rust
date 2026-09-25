@@ -22,7 +22,8 @@ use moonlight_common_sys::limelight::{
 };
 
 use crate::{
-    MoonlightError, ServerVersion,
+    ServerVersion,
+    error::MoonlightError,
     stream::{
         HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings, RawHostFeatures,
         audio::AudioDecoder,
@@ -33,6 +34,7 @@ use crate::{
             ControllerType, EstimatedRttInfo, KeyAction, KeyCode, KeyFlags, KeyModifiers,
             MotionType, MouseButton, MouseButtonAction, TouchEventType,
         },
+        proto::control::{packet::ControlPacketNotSupported, peer::PacketSendError},
         video::VideoDecoder,
     },
 };
@@ -272,7 +274,9 @@ impl MoonlightStream {
     fn send_event_error(error: i32) -> Option<MoonlightError> {
         match error {
             0 => None,
-            LI_ERR_UNSUPPORTED => Some(MoonlightError::NotSupportedOnHost),
+            LI_ERR_UNSUPPORTED => Some(MoonlightError::PacketSend(
+                PacketSendError::PacketNotSupported(ControlPacketNotSupported),
+            )),
             _ => Some(MoonlightError::EventSendError(error)),
         }
     }

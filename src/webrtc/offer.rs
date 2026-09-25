@@ -2,8 +2,11 @@ use std::str::FromStr;
 
 use sdp_types::Session;
 
+use crate::error::{MoonlightError, parse_number_as_bool, parse_u32};
 use crate::stream::video::VideoFormats;
-use crate::webrtc::{WebRTCParseError, bool_str, parse_bool, parse_u32, push};
+use crate::webrtc::{bool_to_number_str, push};
+
+const ERROR_CONTEXT: &str = "webrtc sdp offer";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WebRTCSessionOffer {
@@ -20,7 +23,7 @@ pub struct WebRTCSessionOffer {
 }
 
 impl FromStr for WebRTCSessionOffer {
-    type Err = WebRTCParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let session = Session::parse(s.as_bytes())?;
@@ -30,7 +33,7 @@ impl FromStr for WebRTCSessionOffer {
 }
 
 impl WebRTCSessionOffer {
-    pub fn from_sdp(session: &Session) -> Result<Self, WebRTCParseError> {
+    pub fn from_sdp(session: &Session) -> Result<Self, MoonlightError> {
         let mut app_id = None;
 
         // All are parsed in the same statement -> only need one option
@@ -53,7 +56,7 @@ impl WebRTCSessionOffer {
 
             match attr.attribute.as_str() {
                 "x-moonlight-app-id" => {
-                    app_id = Some(parse_u32("x-moonlight-app-id", value)?);
+                    app_id = Some(parse_u32(ERROR_CONTEXT, "x-moonlight-app-id", value)?);
                 }
                 "x-moonlight-mode" => {
                     let mut parts = value.split('x');
@@ -61,53 +64,59 @@ impl WebRTCSessionOffer {
                     width = Some(
                         parts
                             .next()
-                            .ok_or(WebRTCParseError::InvalidVideoMode(
+                            .ok_or(MoonlightError::InvalidVideoMode(
                                 "missing width".to_string(),
                             ))?
                             .parse::<u32>()
-                            .map_err(|_| WebRTCParseError::InvalidVideoMode(value.to_string()))?,
+                            .map_err(|_| MoonlightError::InvalidVideoMode(value.to_string()))?,
                     );
 
                     height = parts
                         .next()
-                        .ok_or(WebRTCParseError::InvalidVideoMode(
+                        .ok_or(MoonlightError::InvalidVideoMode(
                             "missing height".to_string(),
                         ))?
                         .parse::<u32>()
-                        .map_err(|err| WebRTCParseError::InvalidVideoMode(err.to_string()))?;
+                        .map_err(|err| MoonlightError::InvalidVideoMode(err.to_string()))?;
 
                     fps = parts
                         .next()
-                        .ok_or(WebRTCParseError::InvalidVideoMode(
-                            "missing fps".to_string(),
-                        ))?
+                        .ok_or(MoonlightError::InvalidVideoMode("missing fps".to_string()))?
                         .parse::<u32>()
-                        .map_err(|err| WebRTCParseError::InvalidVideoMode(err.to_string()))?;
+                        .map_err(|err| MoonlightError::InvalidVideoMode(err.to_string()))?;
                 }
                 "x-moonlight-bitrate" => {
-                    bitrate = Some(parse_u32("x-moonlight-bitrate", value)?);
+                    bitrate = Some(parse_u32(ERROR_CONTEXT, "x-moonlight-bitrate", value)?);
                 }
 
                 "x-moonlight-hdr" => {
-                    hdr = parse_bool("x-moonlight-hdr", value)?;
+                    hdr = parse_number_as_bool(ERROR_CONTEXT, "x-moonlight-hdr", value)?;
                 }
 
                 "x-moonlight-local-audio-play-mode" => {
-                    local_audio_play_mode = parse_bool("x-moonlight-local-audio-play-mode", value)?;
+                    local_audio_play_mode = parse_number_as_bool(
+                        ERROR_CONTEXT,
+                        "x-moonlight-local-audio-play-mode",
+                        value,
+                    )?;
                 }
 
                 "x-moonlight-preferred-codec" => {
-                    let value = parse_u32("x-moonlight-preferred-codec", value)?;
+                    let value = parse_u32(ERROR_CONTEXT, "x-moonlight-preferred-codec", value)?;
 
                     preferred_codec = Some(VideoFormats::from_bits_retain(value));
                 }
 
                 "x-moonlight-preferred-audio" => {
-                    preferred_audio = Some(parse_u32("x-moonlight-preferred-audio", value)?);
+                    preferred_audio = Some(parse_u32(
+                        ERROR_CONTEXT,
+                        "x-moonlight-preferred-audio",
+                        value,
+                    )?);
                 }
 
                 "x-moonlight-host-id" => {
-                    host_id = Some(parse_u32("x-moonlight-host-id", value)?);
+                    host_id = Some(parse_u32(ERROR_CONTEXT, "x-moonlight-host-id", value)?);
                 }
 
                 _ => {}
@@ -115,11 +124,20 @@ impl WebRTCSessionOffer {
         }
 
         Ok(Self {
-            app_id: app_id.ok_or(WebRTCParseError::MissingAttribute("x-moonlight-app-id"))?,
-            width: width.ok_or(WebRTCParseError::MissingAttribute("x-moonlight-mode"))?,
+            app_id: app_id.ok_or(MoonlightError::MissingAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "x-moonlight-app-id",
+            })?,
+            width: width.ok_or(MoonlightError::MissingAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "x-moonlight-mode",
+            })?,
             height,
             fps,
-            bitrate: bitrate.ok_or(WebRTCParseError::MissingAttribute("x-moonlight-bitrate"))?,
+            bitrate: bitrate.ok_or(MoonlightError::MissingAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "x-moonlight-bitrate",
+            })?,
             hdr,
             local_audio_play_mode,
             preferred_codecs: preferred_codec,
@@ -139,12 +157,12 @@ impl WebRTCSessionOffer {
 
         push(session, "x-moonlight-bitrate", self.bitrate.to_string());
 
-        push(session, "x-moonlight-hdr", bool_str(self.hdr));
+        push(session, "x-moonlight-hdr", bool_to_number_str(self.hdr));
 
         push(
             session,
             "x-moonlight-local-audio-play-mode",
-            bool_str(self.local_audio_play_mode),
+            bool_to_number_str(self.local_audio_play_mode),
         );
 
         if let Some(v) = self.preferred_codecs {

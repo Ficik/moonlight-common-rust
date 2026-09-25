@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
-    high::MoonlightClientError,
+    high::MoonlightError,
     http::{
         ClientIdentifier, ClientInfo, ClientSecret, DEFAULT_UNIQUE_ID, ServerIdentifier,
         app_list::{AppListEndpoint, AppListRequest, AppListResponse},
@@ -22,7 +22,7 @@ use crate::{
         launch::{ClientStreamRequest, LaunchEndpoint},
         pair::{
             PairEndpoint, PairPin, PairingCryptoBackend,
-            client::{ClientPairing, ClientPairingError, ClientPairingOutput},
+            client::{ClientPairing, ClientPairingOutput},
         },
         resume::ResumeEndpoint,
         server_info::{
@@ -77,17 +77,17 @@ struct Authenticated {
     server_identifier: ServerIdentifier,
 }
 
-fn req_err<Err>(err: Err) -> MoonlightClientError
+fn req_err<Err>(err: Err) -> MoonlightError
 where
     Err: Error + Send + Sync + 'static,
 {
-    MoonlightClientError::Backend(Box::new(err))
+    MoonlightError::Backend(Box::new(err))
 }
-fn crypto_err<Err>(err: ClientPairingError<Err>) -> MoonlightClientError
+fn crypto_err<Err>(err: ClientPairingError<Err>) -> MoonlightError
 where
     Err: Error + Send + Sync + 'static,
 {
-    MoonlightClientError::Pairing(ClientPairingError::from_err(err))
+    MoonlightError::Pairing(ClientPairingError::from_err(err))
 }
 
 /// TODO: some docs
@@ -100,7 +100,7 @@ where
         address: String,
         http_port: u16,
         unique_id: Option<String>,
-    ) -> Result<Self, MoonlightClientError> {
+    ) -> Result<Self, MoonlightError> {
         Ok(Self {
             client: Mutex::new(Client::with_defaults().map_err(req_err)?),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
@@ -121,7 +121,7 @@ where
         format!("{}:{}", self.address, self.http_port)
     }
 
-    pub async fn update(self: &MoonlightHost<Client>) -> Result<(), MoonlightClientError> {
+    pub async fn update(self: &MoonlightHost<Client>) -> Result<(), MoonlightError> {
         let mut cache_lock = self.cache.write().await;
         let client = self.client.lock().await;
 
@@ -180,7 +180,7 @@ where
     async fn server_info_priv<R>(
         &self,
         f: impl FnOnce(&ServerInfoResponse) -> R,
-    ) -> Result<R, MoonlightClientError> {
+    ) -> Result<R, MoonlightError> {
         let response = self.cache.read().await;
 
         if let Some(server_info) = &response.server_info {
@@ -198,63 +198,63 @@ where
         }
     }
 
-    pub async fn server_info(&self) -> Result<ServerInfoResponse, MoonlightClientError> {
+    pub async fn server_info(&self) -> Result<ServerInfoResponse, MoonlightError> {
         self.server_info_priv(|response| response.clone()).await
     }
 
-    pub async fn https_port(&self) -> Result<u16, MoonlightClientError> {
+    pub async fn https_port(&self) -> Result<u16, MoonlightError> {
         self.server_info_priv(|info| info.https_port).await
     }
 
     fn build_https_address(address: &str, https_port: u16) -> String {
         format!("{address}:{https_port}")
     }
-    pub async fn https_address(&self) -> Result<String, MoonlightClientError> {
+    pub async fn https_address(&self) -> Result<String, MoonlightError> {
         let https_port = self.https_port().await?;
         Ok(Self::build_https_address(&self.address, https_port))
     }
-    pub async fn external_port(&self) -> Result<Option<u16>, MoonlightClientError> {
+    pub async fn external_port(&self) -> Result<Option<u16>, MoonlightError> {
         self.server_info_priv(|info| info.external_port).await
     }
 
-    pub async fn host_name(&self) -> Result<String, MoonlightClientError> {
+    pub async fn host_name(&self) -> Result<String, MoonlightError> {
         self.server_info_priv(|info| info.host_name.clone()).await
     }
-    pub async fn version(&self) -> Result<ServerVersion, MoonlightClientError> {
+    pub async fn version(&self) -> Result<ServerVersion, MoonlightError> {
         self.server_info_priv(|info| info.app_version).await
     }
 
-    pub async fn gfe_version(&self) -> Result<String, MoonlightClientError> {
+    pub async fn gfe_version(&self) -> Result<String, MoonlightError> {
         self.server_info_priv(|info| info.gfe_version.clone()).await
     }
-    pub async fn unique_id(&self) -> Result<Uuid, MoonlightClientError> {
+    pub async fn unique_id(&self) -> Result<Uuid, MoonlightError> {
         self.server_info_priv(|info| info.unique_id).await
     }
 
     /// Returns None if unpaired
-    pub async fn mac(&self) -> Result<Option<MacAddress>, MoonlightClientError> {
+    pub async fn mac(&self) -> Result<Option<MacAddress>, MoonlightError> {
         self.server_info_priv(|info| info.mac).await
     }
-    pub async fn local_ip(&self) -> Result<Ipv4Addr, MoonlightClientError> {
+    pub async fn local_ip(&self) -> Result<Ipv4Addr, MoonlightError> {
         self.server_info_priv(|info| info.local_ip).await
     }
 
-    pub async fn current_game(&self) -> Result<u32, MoonlightClientError> {
+    pub async fn current_game(&self) -> Result<u32, MoonlightError> {
         self.server_info_priv(|info| info.current_game).await
     }
 
-    pub async fn state(&self) -> Result<ServerState, MoonlightClientError> {
+    pub async fn state(&self) -> Result<ServerState, MoonlightError> {
         self.server_info_priv(|info| info.state).await
     }
 
-    pub async fn max_luma_pixels_hevc(&self) -> Result<u32, MoonlightClientError> {
+    pub async fn max_luma_pixels_hevc(&self) -> Result<u32, MoonlightError> {
         self.server_info_priv(|info| info.max_luma_pixels_hevc)
             .await
     }
 
     pub async fn server_codec_mode_support(
         &self,
-    ) -> Result<ServerCodecModeSupport, MoonlightClientError> {
+    ) -> Result<ServerCodecModeSupport, MoonlightError> {
         self.server_info_priv(|info| info.server_codec_mode_support)
             .await
     }
@@ -264,7 +264,7 @@ where
         client_identifier: ClientIdentifier,
         client_secret: ClientSecret,
         server_identifier: ServerIdentifier,
-    ) -> Result<(), MoonlightClientError> {
+    ) -> Result<(), MoonlightError> {
         let client = Client::with_certificates(
             &client_secret.to_pem(),
             &client_identifier.to_pem(),
@@ -301,15 +301,15 @@ where
         })
     }
 
-    pub async fn is_paired(&self) -> Result<bool, MoonlightClientError> {
+    pub async fn is_paired(&self) -> Result<bool, MoonlightError> {
         let cache = self.cache.read().await;
         Ok(cache.authenticated.is_some())
     }
-    async fn check_paired(&self) -> Result<(), MoonlightClientError> {
+    async fn check_paired(&self) -> Result<(), MoonlightError> {
         if self.is_paired().await? {
             Ok(())
         } else {
-            Err(MoonlightClientError::Unauthenticated)
+            Err(MoonlightError::Unauthenticated)
         }
     }
 
@@ -320,10 +320,9 @@ where
         device_name: String,
         pin: PairPin,
         crypto_provider: Crypto,
-    ) -> Result<(), MoonlightClientError>
+    ) -> Result<(), MoonlightError>
     where
         Crypto: PairingCryptoBackend,
-        Crypto::Error: Error + Send + Sync + 'static,
     {
         let http_address = self.http_address();
         let server_version = self.version().await?;
@@ -389,10 +388,9 @@ where
         client_info: ClientInfo,
         pairing: &mut ClientPairing<Crypto>,
         client: &mut Client,
-    ) -> Result<(), MoonlightClientError>
+    ) -> Result<(), MoonlightError>
     where
         Crypto: PairingCryptoBackend,
-        Crypto::Error: Error + Send + Sync + 'static,
     {
         let mut server_identifier = None;
 
@@ -448,7 +446,7 @@ where
     }
 
     /// Please see [UnpairEndpoint](crate::http::unpair::UnpairEndpoint) for more info about this function.
-    pub async fn unpair(&self) -> Result<(), MoonlightClientError> {
+    pub async fn unpair(&self) -> Result<(), MoonlightError> {
         self.check_paired().await?;
 
         let https_address = self.https_address().await?;
@@ -472,20 +470,18 @@ where
         Ok(())
     }
 
-    pub async fn apollo_permissions(
-        &self,
-    ) -> Result<Option<ApolloPermissions>, MoonlightClientError> {
+    pub async fn apollo_permissions(&self) -> Result<Option<ApolloPermissions>, MoonlightError> {
         self.check_paired().await?;
 
         self.server_info_priv(|info| info.apollo_permissions.clone())
             .await
     }
 
-    pub async fn app_list(&self) -> Result<Vec<App>, MoonlightClientError> {
+    pub async fn app_list(&self) -> Result<Vec<App>, MoonlightError> {
         let cache = self.cache.read().await;
 
         if cache.authenticated.is_none() {
-            return Err(MoonlightClientError::Unauthenticated);
+            return Err(MoonlightError::Unauthenticated);
         }
 
         if let Some(app_list) = &cache.app_list {
@@ -503,7 +499,7 @@ where
         }
     }
 
-    pub async fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, MoonlightClientError> {
+    pub async fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, MoonlightError> {
         self.check_paired().await?;
 
         let https_address = self.https_address().await?;
@@ -541,7 +537,7 @@ where
         aes_key: AesKey,
         aes_iv: AesIv,
         launch_url_query_parameters: &str,
-    ) -> Result<MoonlightStreamConfig, MoonlightClientError> {
+    ) -> Result<MoonlightStreamConfig, MoonlightError> {
         // Clearing cache so we refresh and can see if there's a game -> launch or resume?
         self.update().await?;
 
@@ -610,7 +606,7 @@ where
         })
     }
 
-    pub async fn cancel(&self) -> Result<bool, MoonlightClientError> {
+    pub async fn cancel(&self) -> Result<bool, MoonlightError> {
         self.check_paired().await?;
 
         let https_hostport = self.https_address().await?;

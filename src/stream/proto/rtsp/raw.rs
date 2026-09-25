@@ -182,7 +182,7 @@ impl Display for RtspRequest {
 pub struct RtspResponseMessage {
     pub protocol: RtspProtocol,
     /// HTTP specification status code
-    pub status_code: u32,
+    pub status_code: i32,
     /// HTTP specification status message
     pub status_message: String,
 }
@@ -227,7 +227,7 @@ impl FromStr for RtspResponseMessage {
                 .next()
                 .ok_or(ParseRtspResponseMessage::MissingProtocol)?,
         )?;
-        let status_code = u32::from_str(
+        let status_code = i32::from_str(
             split
                 .next()
                 .ok_or(ParseRtspResponseMessage::MissingStatusCode)?,

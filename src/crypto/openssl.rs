@@ -21,17 +21,25 @@ use openssl::{
 use pem::Pem;
 use tracing::{Level, instrument, trace};
 
-use crate::http::{
-    ClientIdentifier, ClientSecret, ServerIdentifier,
-    pair::{HashAlgorithm, PairingCryptoBackend},
+use crate::{
+    error::MoonlightError,
+    http::{
+        ClientIdentifier, ClientSecret, ServerIdentifier,
+        pair::{HashAlgorithm, PairingCryptoBackend},
+    },
 };
+
+impl From<ErrorStack> for MoonlightError {
+    fn from(value: ErrorStack) -> Self {
+        // TODO: check for verification failed
+        Self::Other(value.into())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct OpenSSLCryptoBackend;
 
 impl PairingCryptoBackend for OpenSSLCryptoBackend {
-    type Error = ErrorStack;
-
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, output), ret, err))]
     fn hash(
@@ -39,7 +47,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         match algorithm {
             HashAlgorithm::Sha1 => {
                 let digest = sha1(data);
@@ -58,7 +66,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, data), ret, err))]
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Self::Error> {
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError> {
         rand_bytes(data)?;
 
         trace!(data = ?data);
@@ -68,7 +76,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Self::Error> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
         let rsa = Rsa::generate(2048)?;
         let key = PKey::from_rsa(rsa)?;
 
@@ -109,7 +117,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         let mut cipher_ctx = CipherCtx::new()?;
 
         cipher_ctx.encrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
@@ -122,7 +130,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         let mut cipher_ctx = CipherCtx::new()?;
 
         cipher_ctx.decrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
@@ -139,7 +147,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
+    ) -> Result<Vec<u8>, MoonlightError> {
         let client_certificate = X509::from_der(client_certificate.to_pem().contents())?;
 
         Ok(client_certificate.signature().as_slice().to_vec())
@@ -150,7 +158,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
+    ) -> Result<Vec<u8>, MoonlightError> {
         let server_certificate = X509::from_der(server_certificate.to_pem().contents())?;
 
         Ok(server_certificate.signature().as_slice().to_vec())
@@ -163,7 +171,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
         server_secret: &[u8],
         server_signature: &[u8],
         server_identifier: &ServerIdentifier,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<bool, MoonlightError> {
         let server_certificate = X509::from_der(server_identifier.to_pem().contents())?;
 
         let public_key = server_certificate.public_key()?;
@@ -172,12 +180,18 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
         md_ctx.digest_verify_init(Some(Md::sha256()), &public_key)?;
         md_ctx.digest_verify_update(server_secret)?;
-        md_ctx.digest_verify_final(server_signature)
+        let result = md_ctx.digest_verify_final(server_signature)?;
+
+        Ok(result)
     }
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn sign_data(
+        &self,
+        private_key: &ClientSecret,
+        data: &[u8],
+    ) -> Result<Vec<u8>, MoonlightError> {
         let private_key = PKey::<Private>::private_key_from_der(private_key.to_pem().contents())?;
 
         let mut md_ctx = MdCtx::new()?;
@@ -194,19 +208,12 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
 #[cfg(feature = "stream-proto")]
 mod proto {
-    use openssl::{
-        error::ErrorStack,
-        symm::{self, Crypter, Mode},
-    };
+    use openssl::symm::{self, Crypter, Mode};
 
     use crate::{
-        crypto::openssl::OpenSSLCryptoBackend,
-        stream::proto::crypto::{CryptoBackend, CryptoError},
+        crypto::openssl::OpenSSLCryptoBackend, error::MoonlightError,
+        stream::proto::crypto::CryptoBackend,
     };
-
-    fn crypto_err(error: ErrorStack) -> CryptoError {
-        CryptoError::from_error(error)
-    }
 
     impl CryptoBackend for OpenSSLCryptoBackend {
         fn encrypt_aes_gcm(
@@ -216,16 +223,15 @@ mod proto {
             input: &[u8],
             output: &mut [u8],
             tag: &mut [u8],
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), MoonlightError> {
             let cipher = symm::Cipher::aes_128_gcm();
 
-            let mut crypter =
-                Crypter::new(cipher, Mode::Encrypt, key, Some(iv)).map_err(crypto_err)?;
+            let mut crypter = Crypter::new(cipher, Mode::Encrypt, key, Some(iv))?;
 
-            let mut count = crypter.update(input, output).map_err(crypto_err)?;
-            count += crypter.finalize(&mut output[count..]).map_err(crypto_err)?;
+            let mut count = crypter.update(input, output)?;
+            count += crypter.finalize(&mut output[count..])?;
 
-            crypter.get_tag(tag).map_err(crypto_err)?;
+            crypter.get_tag(tag)?;
 
             debug_assert_eq!(count, input.len());
             Ok(())
@@ -238,17 +244,16 @@ mod proto {
             input: &[u8],
             tag: &[u8],
             output: &mut [u8],
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), MoonlightError> {
             let cipher = symm::Cipher::aes_128_gcm();
 
-            let mut crypter =
-                Crypter::new(cipher, Mode::Decrypt, key, Some(iv)).map_err(crypto_err)?;
+            let mut crypter = Crypter::new(cipher, Mode::Decrypt, key, Some(iv))?;
             crypter.pad(false);
 
-            let mut count = crypter.update(input, output).map_err(crypto_err)?;
+            let mut count = crypter.update(input, output)?;
 
-            crypter.set_tag(tag).map_err(crypto_err)?;
-            count += crypter.finalize(&mut output[count..]).map_err(crypto_err)?;
+            crypter.set_tag(tag)?;
+            count += crypter.finalize(&mut output[count..])?;
 
             debug_assert_eq!(count, input.len());
             Ok(())
@@ -260,16 +265,15 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, CryptoError> {
+        ) -> Result<usize, MoonlightError> {
             let cipher = symm::Cipher::aes_128_cbc();
 
             // encrypt
-            let mut crypter =
-                Crypter::new(cipher, Mode::Encrypt, key, Some(iv)).map_err(crypto_err)?;
+            let mut crypter = Crypter::new(cipher, Mode::Encrypt, key, Some(iv))?;
             crypter.pad(true);
 
-            let mut count = crypter.update(input, output).map_err(crypto_err)?;
-            count += crypter.finalize(&mut output[count..]).map_err(crypto_err)?;
+            let mut count = crypter.update(input, output)?;
+            count += crypter.finalize(&mut output[count..])?;
 
             Ok(count)
         }
@@ -280,16 +284,15 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, CryptoError> {
+        ) -> Result<usize, MoonlightError> {
             let cipher = symm::Cipher::aes_128_cbc();
 
             // decrypt
-            let mut crypter =
-                Crypter::new(cipher, Mode::Decrypt, key, Some(iv)).map_err(crypto_err)?;
+            let mut crypter = Crypter::new(cipher, Mode::Decrypt, key, Some(iv))?;
             crypter.pad(true);
 
-            let mut count = crypter.update(input, output).map_err(crypto_err)?;
-            count += crypter.finalize(&mut output[count..]).map_err(crypto_err)?;
+            let mut count = crypter.update(input, output)?;
+            count += crypter.finalize(&mut output[count..])?;
 
             Ok(count)
         }

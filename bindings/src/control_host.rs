@@ -14,10 +14,10 @@ use moonlight_common::{
             control::{
                 packet::{ControlPacketConfig, EnetChannel},
                 peer::{
-                    ControlConnectConfig as ControlConnectConfig2, ControlError as ControlError2,
-                    ControlHost as ControlHost2, ControlHostConfig as ControlHostConfig2,
-                    ControlHostEvent as ControlHostEvent2, ControlPeerConfig as ControlPeerConfig2,
-                    ControlPeerId, ControlPeerRole, PacketKind,
+                    ControlConnectConfig as ControlConnectConfig2, ControlHost as ControlHost2,
+                    ControlHostConfig as ControlHostConfig2, ControlHostEvent as ControlHostEvent2,
+                    ControlPeerConfig as ControlPeerConfig2, ControlPeerId, ControlPeerRole,
+                    PacketKind, PacketSendError as ControlError2,
                 },
             },
             runtime::UdpStream,
@@ -50,7 +50,7 @@ impl From<ControlError2> for ControlError {
             ControlError2::VersionNotSupported(server_version) => {
                 Self::VersionNotSupported(server_version)
             }
-            ControlError2::NotConnected => Self::NotConnected,
+            ControlError2::PeerNotConnected => Self::NotConnected,
             ControlError2::PacketNotSupported(_) => Self::PacketNotSupported,
             ControlError2::ApolloPermissionDenied => Self::ApolloPermissionDenied,
             err => Self::Other(err.into()),

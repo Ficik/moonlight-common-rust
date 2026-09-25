@@ -9,20 +9,20 @@ use std::{convert::Infallible, net::SocketAddr, time::Duration};
 
 use sans_io_time::Instant;
 
-use thiserror::Error;
 use tracing::{Level, instrument};
 
-use crate::stream::{
-    SunshineEncryption,
-    proto::{
-        DynCryptoBackend,
-        microphone::foundation::{
-            packet::FOUNDATION_MAX_MIC_PACKET_SIZE,
-            payloader::{
-                FoundationMicPayloader, FoundationMicPayloaderConfig, FoundationMicPayloaderError,
+use crate::{
+    error::MoonlightError,
+    stream::{
+        SunshineEncryption,
+        proto::{
+            DynCryptoBackend,
+            microphone::foundation::{
+                packet::FOUNDATION_MAX_MIC_PACKET_SIZE,
+                payloader::{FoundationMicPayloader, FoundationMicPayloaderConfig},
             },
+            runtime::UdpStream,
         },
-        runtime::UdpStream,
     },
 };
 
@@ -36,12 +36,6 @@ pub mod rtsp;
 
 #[cfg(test)]
 mod test;
-
-#[derive(Debug, Error)]
-pub enum FoundationMicStreamError {
-    #[error("payloader: {0}")]
-    Payloader(#[from] FoundationMicPayloaderError),
-}
 
 #[derive(Debug)]
 pub struct FoundationMicStreamConfig {
@@ -80,7 +74,7 @@ impl FoundationMicStream {
         &mut self,
         timestamp: Duration,
         frame: &[u8],
-    ) -> Result<(), FoundationMicStreamError> {
+    ) -> Result<(), MoonlightError> {
         self.payloader.push_frame(timestamp, frame)?;
 
         Ok(())
@@ -96,7 +90,7 @@ impl FoundationMicStream {
 }
 
 impl UdpStream for FoundationMicStream {
-    type Error = FoundationMicStreamError;
+    type Error = MoonlightError;
 
     type Event = Infallible;
 

@@ -14,6 +14,7 @@ use roxmltree::Node;
 
 use crate::{
     ServerVersion,
+    error::MoonlightError,
     http::{
         ClientIdentifier, ClientSecret, Endpoint, FromQueryError, ParseError, QueryBuilder,
         QueryBuilderError, QueryMap, Request, ServerIdentifier, TextResponse,
@@ -46,7 +47,7 @@ pub struct PairPin {
 }
 
 impl PairPin {
-    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Crypto::Error>
+    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, MoonlightError>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -261,9 +262,7 @@ fn hash_algorithm_for_server(server_version: ServerVersion) -> HashAlgorithm {
 }
 
 pub trait PairingCryptoBackend {
-    type Error: std::error::Error;
-
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Self::Error>;
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError>;
 
     /// Hashes data into the output buffer provided.
     fn hash(
@@ -271,25 +270,25 @@ pub trait PairingCryptoBackend {
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), Self::Error>;
+    ) -> Result<(), MoonlightError>;
 
     /// Puts random bytes into data.
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Self::Error>;
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError>;
 
     /// Encrypts plaintext using aes 128 bit ecb with the provided key.
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError>;
 
     /// Decrypts plaintext using aes 128 bit ecb with the provided key.
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError>;
 
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Self::Error>;
+    ) -> Result<Vec<u8>, MoonlightError>;
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Self::Error>;
+    ) -> Result<Vec<u8>, MoonlightError>;
 
     /// Verifies the signature using sha256
     fn verify_signature(
@@ -297,27 +296,26 @@ pub trait PairingCryptoBackend {
         server_secret: &[u8],
         server_signature: &[u8],
         server_certificate: &ServerIdentifier,
-    ) -> Result<bool, Self::Error>;
+    ) -> Result<bool, MoonlightError>;
 
     /// Signs the data using sha256
-    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Self::Error>;
+    fn sign_data(&self, private_key: &ClientSecret, data: &[u8])
+    -> Result<Vec<u8>, MoonlightError>;
 }
 
 impl<T> PairingCryptoBackend for Arc<T>
 where
     T: PairingCryptoBackend,
 {
-    type Error = T::Error;
-
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Self::Error> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
         T::generate_client_identity(self)
     }
 
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         T::decrypt_aes(self, key, ciphertext)
     }
 
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         T::encrypt_aes(self, key, plaintext)
     }
 
@@ -326,28 +324,32 @@ where
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         T::hash(self, algorithm, data, output)
     }
 
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Self::Error> {
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError> {
         T::random_bytes(self, data)
     }
 
-    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn sign_data(
+        &self,
+        private_key: &ClientSecret,
+        data: &[u8],
+    ) -> Result<Vec<u8>, MoonlightError> {
         T::sign_data(self, private_key, data)
     }
 
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
+    ) -> Result<Vec<u8>, MoonlightError> {
         T::client_signature(self, client_certificate)
     }
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
+    ) -> Result<Vec<u8>, MoonlightError> {
         T::server_signature(self, server_certificate)
     }
 
@@ -356,7 +358,7 @@ where
         server_secret: &[u8],
         server_signature: &[u8],
         server_cert: &ServerIdentifier,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<bool, MoonlightError> {
         T::verify_signature(self, server_secret, server_signature, server_cert)
     }
 }

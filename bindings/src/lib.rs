@@ -12,7 +12,7 @@ use moonlight_common::{
     stream::{
         AesIv, AesKey, SunshineEncryption,
         proto::{
-            Instant, audio::AudioStreamError, control::peer::ControlError, packet::SunshinePing,
+            Instant, audio::AudioStreamError, control::peer::PacketSendError, packet::SunshinePing,
             video::VideoStreamError,
         },
         video::{VideoFormat, VideoFormats as VideoFormats2},
@@ -41,7 +41,7 @@ pub enum MoonlightError {
     #[error("audio stream: {0}")]
     AudioStream(#[from] AudioStreamError),
     #[error("control stream: {0}")]
-    ControlStream(#[from] ControlError),
+    ControlStream(#[from] PacketSendError),
     #[error("webrtc session parse: {0}")]
     WebRTCSession(#[from] WebRTCParseError),
     #[error("set logger: {0}")]

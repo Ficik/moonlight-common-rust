@@ -15,12 +15,12 @@ use crate::stream::{
     audio::OpusMultistreamConfig,
     control::EstimatedRttInfo,
     proto::{
-        DynCryptoBackend, MoonlightStreamInput, MoonlightStreamProtoError, MoonlightStreamSetup,
+        DynCryptoBackend, MoonlightStreamInput, MoonlightStreamSetup, MoonlightStreamSetupError,
         MoonlightStreamSetupOutput,
         audio::{AudioStream, AudioStreamError, AudioStreamEvent},
         control::{
             ControlStream, ControlStreamEvent, input_batcher::ClientInputEvent,
-            packet::ControlPacket, peer::ControlError,
+            packet::ControlPacket, peer::PacketSendError,
         },
         microphone::foundation::{FoundationMicStream, FoundationMicStreamError},
         video::{VideoStream, VideoStreamError, VideoStreamEvent},
@@ -36,13 +36,13 @@ pub enum MoonlightStreamError {
     #[error("io: {0}")]
     Io(#[from] io::Error),
     #[error("setup: {0}")]
-    Setup(#[from] MoonlightStreamProtoError),
+    Setup(#[from] MoonlightStreamSetupError),
     #[error("audio: {0}")]
     Audio(#[from] AudioStreamError),
     #[error("video: {0}")]
     Video(#[from] VideoStreamError),
     #[error("control: {0}")]
-    Control(#[from] ControlError),
+    Control(#[from] PacketSendError),
     #[error("foundation mic: {0}")]
     FoundationMic(#[from] FoundationMicStreamError),
     #[error("connection timed out")]
@@ -258,18 +258,18 @@ impl MoonlightStream {
         self.video_setup
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, ControlError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, PacketSendError> {
         self.control_stream.stream().estimated_rtt()
     }
 
-    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), ControlError> {
+    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), PacketSendError> {
         self.control_stream.stream_mut().batch_input(input)
     }
-    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), ControlError> {
+    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), PacketSendError> {
         self.control_stream.stream_mut().send_raw(packet)
     }
 
-    pub fn disconnect(&mut self) -> Result<(), ControlError> {
+    pub fn disconnect(&mut self) -> Result<(), PacketSendError> {
         self.control_stream.stream_mut().disconnect(0)
     }
 

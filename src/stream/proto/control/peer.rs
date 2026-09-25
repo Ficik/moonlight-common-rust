@@ -10,7 +10,7 @@ use thiserror::Error;
 use tracing::{Level, debug, instrument, trace, warn};
 
 use crate::{
-    ServerVersion,
+    error::MoonlightError,
     stream::{
         AesKey,
         control::EstimatedRttInfo,
@@ -18,7 +18,7 @@ use crate::{
             DynCryptoBackend,
             control::{
                 encryption::{
-                    ControlEncryptionError, decrypt_clientbound_control_packet_into,
+                    decrypt_clientbound_control_packet_into,
                     decrypt_serverbound_control_packet_into,
                     encrypt_clientbound_control_packet_into,
                     encrypt_serverbound_control_packet_into,
@@ -28,7 +28,7 @@ use crate::{
                     EncryptedControlHeader, EnetChannel, PacketDirection,
                 },
             },
-            enet::{EnetConfig, EnetError, EnetEvent, EnetHost},
+            enet::{EnetConfig, EnetEvent, EnetHost},
             runtime::UdpStream,
         },
     },
@@ -80,15 +80,13 @@ impl From<PacketKind> for rusty_enet::PacketKind {
 }
 
 #[derive(Debug, Error)]
-pub enum ControlError {
-    #[error("this version of the protocol is not supported: {0}")]
-    VersionNotSupported(ServerVersion),
-    #[error("enet: {0}")]
-    Enet(#[from] EnetError),
-    #[error("the control stream hasn't successfully connected yet")]
-    NotConnected,
+pub enum PacketSendError {
+    #[error("the peer hasn't been found")]
+    PeerNotFound,
+    #[error("the peer hasn't successfully connected yet")]
+    PeerNotConnected,
     #[error("the peer was not configured, but this is required to do this action")]
-    NotConfigured,
+    PeerNotConfigured,
     #[error("packet not supported")]
     PacketNotSupported(#[from] ControlPacketNotSupported),
     /// Apollo Extension
@@ -97,8 +95,6 @@ pub enum ControlError {
     /// - [ApolloPermissions](crate::stream::ApolloPermissions)
     #[error("the apollo permissions list doesn't allow this action")]
     ApolloPermissionDenied,
-    #[error("encryption: {0}")]
-    Encryption(#[from] ControlEncryptionError),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -210,7 +206,7 @@ impl ControlHost {
         now: Instant,
         config: ControlHostConfig,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, ControlError> {
+    ) -> Result<Self, PacketSendError> {
         Ok(Self {
             crypto_backend,
             peer_data: Default::default(),
@@ -232,7 +228,7 @@ impl ControlHost {
         &mut self,
         addr: SocketAddr,
         config: ControlConnectConfig,
-    ) -> Result<ControlPeerId, ControlError> {
+    ) -> Result<ControlPeerId, MoonlightError> {
         let id = self.host.connect(
             addr,
             config.channel_count,
@@ -258,9 +254,9 @@ impl ControlHost {
         &mut self,
         id: ControlPeerId,
         config: ControlPeerConfig,
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), PacketSendError> {
         if self.host.peer(id.0).is_none() {
-            return Err(ControlError::Enet(EnetError::PeerNotFound));
+            return Err(PacketSendError::PeerNotFound);
         }
 
         self.peer_data.insert(
@@ -281,7 +277,7 @@ impl ControlHost {
         channel_id: EnetChannel,
         kind: PacketKind,
         packet: ControlPacket,
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), MoonlightError> {
         // Avoid spam from some packets
         if matches!(
             packet,
@@ -302,14 +298,14 @@ impl ControlHost {
 
         // Firstly see if the peer exists
         let Some(peer) = self.host.peer_mut(id.0) else {
-            return Err(ControlError::Enet(EnetError::PeerNotFound));
+            return Err(PacketSendError::PeerNotConnected.into());
         };
 
         // Then if we've got a config
         let data = self
             .peer_data
             .get_mut(&id)
-            .ok_or(ControlError::NotConfigured)?;
+            .ok_or::<MoonlightError>(PacketSendError::PeerNotConfigured.into())?;
 
         if packet.ty().direction() != data.config.role.outgoing_direction() {
             warn!(
@@ -318,7 +314,7 @@ impl ControlHost {
                 packet = ?packet,
                 "tried sending a packet into the wrong direction"
             );
-            return Err(ControlError::PacketNotSupported(ControlPacketNotSupported));
+            return Err(PacketSendError::PacketNotSupported(ControlPacketNotSupported).into());
         }
 
         let mut unencrypted_buffer = [0; ControlPacket::MAX_SIZE];
@@ -354,8 +350,7 @@ impl ControlHost {
             &unencrypted_buffer[0..len]
         };
 
-        peer.send(channel_id.0, &Packet::new(buffer, kind.into()))
-            .map_err(EnetError::from)?;
+        peer.send(channel_id.0, &Packet::new(buffer, kind.into()))?;
 
         self.host.service();
 
@@ -404,7 +399,7 @@ impl ControlHost {
     }
 
     #[instrument(level = Level::DEBUG, skip(self))]
-    pub fn disconnect(&mut self, id: ControlPeerId, data: u32) -> Result<(), ControlError> {
+    pub fn disconnect(&mut self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
         self.host.disconnect(id.0, data)?;
 
         self.host.service();
@@ -412,14 +407,14 @@ impl ControlHost {
     }
 
     #[instrument(level = Level::DEBUG, skip(self))]
-    pub fn disconnect_now(&mut self, id: ControlPeerId, data: u32) -> Result<(), ControlError> {
+    pub fn disconnect_now(&mut self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
         self.host.disconnect_now(id.0, data)?;
 
         self.host.service();
         Ok(())
     }
 
-    fn handle_events(&mut self) -> Result<(), ControlError> {
+    fn handle_events(&mut self) -> Result<(), MoonlightError> {
         while let Some(event) = self.host.poll_event() {
             trace!(event = ?event, "enet event");
 
@@ -529,7 +524,7 @@ impl ControlHost {
 }
 
 impl UdpStream for ControlHost {
-    type Error = ControlError;
+    type Error = MoonlightError;
 
     type Event = ControlHostEvent;
 
@@ -553,14 +548,14 @@ impl UdpStream for ControlHost {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), MoonlightError> {
         self.host.handle_receive(now, addr, data);
 
         self.handle_events()?;
         Ok(())
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), ControlError> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
         self.host.handle_timeout(now);
 
         self.handle_events()?;

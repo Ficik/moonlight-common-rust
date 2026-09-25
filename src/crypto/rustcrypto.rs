@@ -7,7 +7,10 @@ use std::{str::FromStr, time::Duration};
 
 use aes::{
     Aes128,
-    cipher::{BlockDecrypt, BlockEncrypt, InvalidLength, KeyInit, generic_array::GenericArray},
+    cipher::{
+        BlockDecrypt, BlockEncrypt, InvalidLength, KeyInit, block_padding::UnpadError,
+        generic_array::GenericArray, inout::PadError,
+    },
 };
 use der::Decode;
 use pem::Pem;
@@ -32,9 +35,12 @@ use x509_cert::{
     time::Validity,
 };
 
-use crate::http::{
-    ClientIdentifier, ClientSecret, ServerIdentifier,
-    pair::{HashAlgorithm, PairingCryptoBackend},
+use crate::{
+    error::MoonlightError,
+    http::{
+        ClientIdentifier, ClientSecret, ServerIdentifier,
+        pair::{HashAlgorithm, PairingCryptoBackend},
+    },
 };
 
 #[derive(Debug, Error)]
@@ -55,14 +61,24 @@ pub enum RustCryptoError {
     InvalidBitStringSignature,
     #[error("pkcs8: {0}")]
     Pkcs8(#[from] pkcs8::Error),
-    #[error("aes gcm")]
-    AesGcm,
+    #[error("aes gcm: {0}")]
+    AesGcm(#[from] aes_gcm::aead::Error),
     #[error("aes cbc: invalid length")]
     AesCbcInvalidLength(#[from] InvalidLength),
     #[error("aes cbc: pad error")]
-    AesCbcPadError,
+    AesCbcPadError(#[from] PadError),
     #[error("aes cbc: unpad error")]
-    AesCbcUnpadError,
+    AesCbcUnpadError(#[from] UnpadError),
+}
+
+fn err(value: impl Into<RustCryptoError>) -> MoonlightError {
+    value.into().into()
+}
+
+impl From<RustCryptoError> for MoonlightError {
+    fn from(value: RustCryptoError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -73,8 +89,6 @@ fn secure_rng() -> Result<OsRng, RustCryptoError> {
 }
 
 impl PairingCryptoBackend for RustCryptoBackend {
-    type Error = RustCryptoError;
-
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, output), ret, err))]
     fn hash(
@@ -82,7 +96,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         match algorithm {
             HashAlgorithm::Sha1 => {
                 let digest = Sha1::digest(data);
@@ -101,8 +115,8 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, data), ret, err))]
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Self::Error> {
-        secure_rng()?.try_fill_bytes(data)?;
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError> {
+        secure_rng()?.try_fill_bytes(data).map_err(err)?;
 
         trace!(data = ?data);
 
@@ -111,22 +125,22 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Self::Error> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
         // Generate Private Key
-        let private_key = RsaPrivateKey::new(&mut secure_rng()?, 2048)?;
-        let private_key_der = private_key.to_pkcs8_der()?;
+        let private_key = RsaPrivateKey::new(&mut secure_rng()?, 2048).map_err(err)?;
+        let private_key_der = private_key.to_pkcs8_der().map_err(err)?;
         let private_key_pem = Pem::new("PRIVATE KEY", private_key_der.as_bytes());
 
         // Generate Certificate
         let public_key = private_key.to_public_key();
 
         let serial_number = SerialNumber::from(1u32);
-        let validity = Validity::from_now(Duration::from_secs(60 * 60 * 24 * 365))?;
+        let validity = Validity::from_now(Duration::from_secs(60 * 60 * 24 * 365)).map_err(err)?;
         // This is a valid subject
         #[allow(clippy::unwrap_used)]
         let subject =
             Name::from_str("C=US,ST=CA,L=San Francisco,O=Example Corp,CN=example.com").unwrap();
-        let subject_public_key_info = SubjectPublicKeyInfo::from_key(public_key)?;
+        let subject_public_key_info = SubjectPublicKeyInfo::from_key(public_key).map_err(err)?;
 
         let cert_signer = SigningKey::<Sha256>::new(private_key);
 
@@ -137,10 +151,12 @@ impl PairingCryptoBackend for RustCryptoBackend {
             subject,
             subject_public_key_info,
             &cert_signer,
-        )?
-        .build()?;
+        )
+        .map_err(err)?
+        .build()
+        .map_err(err)?;
 
-        let certificate_der = certificate.to_der()?;
+        let certificate_der = certificate.to_der().map_err(err)?;
         let certificate_pem = Pem::new("CERTIFICATE", certificate_der);
 
         Ok((
@@ -153,7 +169,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         // TODO: maybe return this as an error
         assert_eq!(key.len(), 16);
         assert_eq!(plaintext.len() % 16, 0);
@@ -172,7 +188,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Self::Error> {
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
         // TODO: maybe return this as an error
         assert_eq!(key.len(), 16);
         assert_eq!(ciphertext.len() % 16, 0);
@@ -194,8 +210,9 @@ impl PairingCryptoBackend for RustCryptoBackend {
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
-        let client_certificate = Certificate::from_der(client_certificate.to_pem().contents())?;
+    ) -> Result<Vec<u8>, MoonlightError> {
+        let client_certificate =
+            Certificate::from_der(client_certificate.to_pem().contents()).map_err(err)?;
 
         Ok(client_certificate
             .signature
@@ -209,8 +226,9 @@ impl PairingCryptoBackend for RustCryptoBackend {
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Self::Error> {
-        let server_certificate = Certificate::from_der(server_certificate.to_pem().contents())?;
+    ) -> Result<Vec<u8>, MoonlightError> {
+        let server_certificate =
+            Certificate::from_der(server_certificate.to_pem().contents()).map_err(err)?;
 
         Ok(server_certificate
             .signature
@@ -226,24 +244,34 @@ impl PairingCryptoBackend for RustCryptoBackend {
         server_secret: &[u8],
         server_signature: &[u8],
         server_identifier: &ServerIdentifier,
-    ) -> Result<bool, Self::Error> {
-        let certificate = Certificate::from_der(server_identifier.to_pem().contents())?;
+    ) -> Result<bool, MoonlightError> {
+        let certificate =
+            Certificate::from_der(server_identifier.to_pem().contents()).map_err(err)?;
 
         let spki = certificate.tbs_certificate.subject_public_key_info;
 
-        let public_key = RsaPublicKey::from_public_key_der(&spki.to_der()?)?;
+        let public_key =
+            RsaPublicKey::from_public_key_der(&spki.to_der().map_err(err)?).map_err(err)?;
 
         let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 
         Ok(verifying_key
-            .verify(server_secret, &Signature::try_from(server_signature)?)
+            .verify(
+                server_secret,
+                &Signature::try_from(server_signature).map_err(err)?,
+            )
             .is_ok())
     }
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Self::Error> {
-        let private_key = RsaPrivateKey::from_pkcs8_der(private_key.to_pem().contents())?;
+    fn sign_data(
+        &self,
+        private_key: &ClientSecret,
+        data: &[u8],
+    ) -> Result<Vec<u8>, MoonlightError> {
+        let private_key =
+            RsaPrivateKey::from_pkcs8_der(private_key.to_pem().contents()).map_err(err)?;
 
         let signing_key = SigningKey::<Sha256>::new(private_key);
 
@@ -255,6 +283,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
 #[cfg(feature = "stream-proto")]
 mod proto {
+    use super::err;
     use aes::{
         Aes128,
         cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7, consts::U16},
@@ -263,8 +292,8 @@ mod proto {
     use cbc::{Decryptor, Encryptor};
 
     use crate::{
-        crypto::rustcrypto::{RustCryptoBackend, RustCryptoError},
-        stream::proto::crypto::{CryptoBackend, CryptoError},
+        crypto::rustcrypto::RustCryptoBackend, error::MoonlightError,
+        stream::proto::crypto::CryptoBackend,
     };
 
     impl CryptoBackend for RustCryptoBackend {
@@ -275,7 +304,7 @@ mod proto {
             input: &[u8],
             output: &mut [u8],
             tag: &mut [u8],
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), MoonlightError> {
             debug_assert_eq!(key.len(), 16, "AES-128 key must be 16 bytes");
             debug_assert!(
                 matches!(iv.len(), 12 | 16),
@@ -291,7 +320,7 @@ mod proto {
 
                 cipher
                     .encrypt_in_place_detached(iv.into(), &[], &mut output[0..input.len()])
-                    .map_err(|_| CryptoError::from_error(RustCryptoError::AesGcm))?
+                    .map_err(err)?
             } else if iv.len() == 16 {
                 let cipher = AesGcm::<Aes128, U16>::new(key.into());
 
@@ -299,7 +328,7 @@ mod proto {
 
                 cipher
                     .encrypt_in_place_detached(iv.into(), &[], &mut output[0..input.len()])
-                    .map_err(|_| CryptoError::from_error(RustCryptoError::AesGcm))?
+                    .map_err(err)?
             } else {
                 unreachable!()
             };
@@ -316,7 +345,7 @@ mod proto {
             input: &[u8],
             tag: &[u8],
             output: &mut [u8],
-        ) -> Result<(), CryptoError> {
+        ) -> Result<(), MoonlightError> {
             debug_assert_eq!(key.len(), 16, "AES-128 key must be 16 bytes");
             debug_assert!(
                 matches!(iv.len(), 12 | 16),
@@ -337,7 +366,7 @@ mod proto {
                         &mut output[0..input.len()],
                         tag.into(),
                     )
-                    .map_err(|_| CryptoError::from_error(RustCryptoError::AesGcm))?;
+                    .map_err(|_| MoonlightError::DecryptFailed("aes gcm"))?;
             } else if iv.len() == 16 {
                 let cipher = AesGcm::<Aes128, U16>::new(key.into());
 
@@ -350,7 +379,7 @@ mod proto {
                         &mut output[0..input.len()],
                         tag.into(),
                     )
-                    .map_err(|_| CryptoError::from_error(RustCryptoError::AesGcm))?;
+                    .map_err(|_| MoonlightError::DecryptFailed("aes gcm"))?;
             }
 
             Ok(())
@@ -362,14 +391,12 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, CryptoError> {
-            let cipher = Encryptor::<Aes128>::new_from_slices(key, iv).map_err(|err| {
-                CryptoError::from_error(RustCryptoError::AesCbcInvalidLength(err))
-            })?;
+        ) -> Result<usize, MoonlightError> {
+            let cipher = Encryptor::<Aes128>::new_from_slices(key, iv).map_err(err)?;
 
             let len = cipher
                 .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
-                .map_err(|_| CryptoError::from_error(RustCryptoError::AesCbcPadError))?
+                .map_err(err)?
                 .len();
 
             Ok(len)
@@ -381,14 +408,12 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, CryptoError> {
-            let cipher = Decryptor::<Aes128>::new_from_slices(key, iv).map_err(|err| {
-                CryptoError::from_error(RustCryptoError::AesCbcInvalidLength(err))
-            })?;
+        ) -> Result<usize, MoonlightError> {
+            let cipher = Decryptor::<Aes128>::new_from_slices(key, iv).map_err(err)?;
 
             let len = cipher
                 .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
-                .map_err(|_| CryptoError::from_error(RustCryptoError::AesCbcUnpadError))?
+                .map_err(err)?
                 .len();
 
             Ok(len)

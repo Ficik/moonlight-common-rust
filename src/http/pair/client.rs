@@ -1,8 +1,8 @@
-use thiserror::Error;
 use tracing::{Level, Span, debug, debug_span, instrument};
 
 use crate::{
     ServerVersion,
+    error::MoonlightError,
     http::{
         ClientIdentifier, ClientSecret, ServerIdentifier,
         pair::{
@@ -38,34 +38,6 @@ pub enum ClientPairingOutput {
     ///
     /// The [ClientPairing] struct can now be dropped.
     Success,
-}
-
-#[derive(Debug, Error, PartialEq)]
-pub enum ClientPairingError<CryptoError> {
-    #[error("another device is currently pairing with the server")]
-    FailedAlreadyInProgress,
-    #[error("failed to pair because the pin was incorrect")]
-    FailedWrongPin,
-    #[error("failed")]
-    Failed,
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
-}
-
-impl<Error> ClientPairingError<Error> {
-    pub fn from_err<F>(value: ClientPairingError<F>) -> Self
-    where
-        Error: From<F>,
-    {
-        match value {
-            ClientPairingError::Crypto(crypto) => ClientPairingError::Crypto(crypto.into()),
-            ClientPairingError::Failed => ClientPairingError::Failed,
-            ClientPairingError::FailedAlreadyInProgress => {
-                ClientPairingError::FailedAlreadyInProgress
-            }
-            ClientPairingError::FailedWrongPin => ClientPairingError::FailedWrongPin,
-        }
-    }
 }
 
 const KEY_LENGTH: usize = 16;
@@ -145,7 +117,7 @@ where
         device_name: String,
         pin: PairPin,
         crypto_provider: Crypto,
-    ) -> Result<Self, ClientPairingError<Crypto::Error>> {
+    ) -> Result<Self, MoonlightError> {
         let mut salt = [0; _];
         crypto_provider.random_bytes(&mut salt)?;
 
@@ -177,7 +149,7 @@ where
         challenge: [u8; CHALLENGE_LENGTH],
         client_pair_secret: [u8; CLIENT_PAIR_SECRET_LENGTH],
         crypto_provider: Crypto,
-    ) -> Result<Self, ClientPairingError<Crypto::Error>> {
+    ) -> Result<Self, MoonlightError> {
         let hash_algorithm = hash_algorithm_for_server(server_version);
         let aes_key = generate_aes_key(&crypto_provider, hash_algorithm, salt, pin)?;
 
@@ -199,10 +171,7 @@ where
 
     /// Handle the response after sending a request.
     #[instrument(level = Level::DEBUG, parent = &self.span, fields(state = ?&self.state), skip(self), ret, err)]
-    pub fn handle_response(
-        &mut self,
-        response: PairResponse,
-    ) -> Result<(), ClientPairingError<Crypto::Error>> {
+    pub fn handle_response(&mut self, response: PairResponse) -> Result<(), MoonlightError> {
         let state = self
             .state
             .take()
@@ -219,21 +188,21 @@ where
                     debug!(reason = "wrong response", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 if !response.paired {
                     debug!(reason = "response.paired = false", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 let Some(server_certificate) = response.certificate else {
                     debug!(reason = "no certificate", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 self.state = Some(State::SendPhase2 {
@@ -251,14 +220,14 @@ where
                     debug!(reason = "wrong response", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 if !response.paired {
                     debug!(reason = "response.paired = false", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 let response = self
@@ -275,7 +244,7 @@ where
                     );
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 let hash_len = self.hash_algorithm.hash_len();
@@ -305,14 +274,14 @@ where
                     debug!(reason = "wrong response", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 if !response.paired {
                     debug!(reason = "response.paired = false", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 // Validate server response
@@ -326,7 +295,7 @@ where
                     );
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 let mut server_secret = [0; 16];
@@ -347,7 +316,7 @@ where
                     // MITM likely, cancel here
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 let mut expected_response = Vec::new();
@@ -371,7 +340,7 @@ where
                     );
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::FailedWrongPin);
+                    return Err(MoonlightError::PairingFailedWrongPin);
                 }
 
                 self.state = Some(State::SendPhase4 { server_certificate });
@@ -383,14 +352,14 @@ where
                     debug!(reason = "wrong response", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 if !response.paired {
                     debug!(reason = "response.paired = false", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 self.state = Some(State::SetCertificate { server_certificate });
@@ -402,14 +371,14 @@ where
                     debug!(reason = "wrong response", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 };
 
                 if !response.paired {
                     debug!(reason = "response.paired = false", "pairing failed");
 
                     self.state = Some(State::Error);
-                    return Err(ClientPairingError::Failed);
+                    return Err(MoonlightError::PairingFailed);
                 }
 
                 self.state = Some(State::Success);
@@ -424,9 +393,7 @@ where
     ///
     /// If this returns [ClientPairingOutput::SetServerIdentifier] you MUST poll this function again, without calling [ClientPairing::handle_response]
     #[instrument(level = Level::DEBUG, parent = &self.span, fields(state = ?&self.state), skip(self), ret, err)]
-    pub fn poll_output(
-        &mut self,
-    ) -> Result<ClientPairingOutput, ClientPairingError<Crypto::Error>> {
+    pub fn poll_output(&mut self) -> Result<ClientPairingOutput, MoonlightError> {
         let state = self
             .state
             .take()
@@ -569,7 +536,7 @@ fn hash_size_uneq<C>(
     algorithm: HashAlgorithm,
     data: &[u8],
     output: &mut [u8],
-) -> Result<(), ClientPairingError<C::Error>>
+) -> Result<(), MoonlightError>
 where
     C: PairingCryptoBackend,
 {
@@ -586,7 +553,7 @@ fn generate_aes_key<C>(
     algorithm: HashAlgorithm,
     salt: [u8; SALT_LENGTH],
     pin: PairPin,
-) -> Result<[u8; KEY_LENGTH], ClientPairingError<C::Error>>
+) -> Result<[u8; KEY_LENGTH], MoonlightError>
 where
     C: PairingCryptoBackend,
 {
@@ -629,7 +596,6 @@ mod test {
     fn test_pair_with<C>(crypto: C)
     where
         C: PairingCryptoBackend,
-        C::Error: Debug,
     {
         let pin = PairPin::new(6, 0, 0, 2).unwrap();
         let device_name = "roth".to_string();

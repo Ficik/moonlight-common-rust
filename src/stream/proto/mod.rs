@@ -16,6 +16,7 @@ use tracing::{Level, debug, info, instrument, warn};
 use crate::{
     ServerVersion,
     crypto::disabled::DisabledCryptoBackend,
+    error::MoonlightError,
     stream::{
         EncryptionFlags, HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         RawHostFeatures, StreamingConfig,
@@ -87,7 +88,7 @@ pub use sans_io_time::Instant;
 pub const DEFAULT_RTSP_PORT: u16 = 48010;
 
 #[derive(Debug, Error)]
-pub enum MoonlightStreamProtoError {
+pub enum MoonlightStreamSetupError {
     #[error("rtsp: {0}")]
     Rtsp(#[from] RtspClientError),
     #[error("parse rtsp response: {0}")]
@@ -97,6 +98,12 @@ pub enum MoonlightStreamProtoError {
         expected_session: String,
         session: String,
     },
+}
+
+impl From<MoonlightStreamSetupError> for MoonlightError {
+    fn from(value: MoonlightStreamSetupError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 pub const MOONLIGHT_STREAM_SETUP_TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -209,7 +216,7 @@ impl MoonlightStreamSetup {
         config: MoonlightStreamConfig,
         settings: MoonlightStreamSettings,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightStreamProtoError> {
+    ) -> Result<Self, MoonlightError> {
         Self::new(
             now,
             config,
@@ -237,7 +244,7 @@ impl MoonlightStreamSetup {
         mut settings: MoonlightStreamSettings,
         crypto_backend: DynCryptoBackend,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightStreamProtoError> {
+    ) -> Result<Self, MoonlightError> {
         // https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/RtspConnection.c#L976-L994
         #[allow(clippy::wildcard_in_or_patterns)]
         let client_version = match config.version.major {
@@ -322,7 +329,7 @@ impl MoonlightStreamSetup {
         Ok(this)
     }
 
-    pub fn poll_output(&mut self) -> Result<MoonlightStreamSetupOutput, MoonlightStreamProtoError> {
+    pub fn poll_output(&mut self) -> Result<MoonlightStreamSetupOutput, MoonlightError> {
         let mut timeout;
         loop {
             match self.rtsp.poll_output()? {
@@ -442,10 +449,11 @@ impl MoonlightStreamSetup {
                             let session_id = self.session_id.as_ref().unwrap();
 
                             if &video_setup.session_id != session_id {
-                                return Err(MoonlightStreamProtoError::WrongSessionId {
+                                return Err(MoonlightStreamSetupError::WrongSessionId {
                                     expected_session: session_id.to_string(),
                                     session: video_setup.session_id.to_string(),
-                                });
+                                }
+                                .into());
                             }
 
                             let ip = self.rtsp.remote_addr().ip();
@@ -510,10 +518,11 @@ impl MoonlightStreamSetup {
                             let session_id = self.session_id.as_ref().unwrap();
 
                             if &mic_setup.session_id != session_id {
-                                return Err(MoonlightStreamProtoError::WrongSessionId {
+                                return Err(MoonlightStreamSetupError::WrongSessionId {
                                     expected_session: session_id.to_string(),
                                     session: mic_setup.session_id.to_string(),
-                                });
+                                }
+                                .into());
                             }
 
                             let ip = self.rtsp.remote_addr().ip();
@@ -563,10 +572,11 @@ impl MoonlightStreamSetup {
                             let session_id = self.session_id.as_ref().unwrap();
 
                             if &control_setup.session_id != session_id {
-                                return Err(MoonlightStreamProtoError::WrongSessionId {
+                                return Err(MoonlightStreamSetupError::WrongSessionId {
                                     expected_session: session_id.to_string(),
                                     session: control_setup.session_id.to_string(),
-                                });
+                                }
+                                .into());
                             }
 
                             let ip = self.rtsp.remote_addr().ip();
@@ -789,10 +799,7 @@ impl MoonlightStreamSetup {
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    pub fn handle_input(
-        &mut self,
-        input: MoonlightStreamInput,
-    ) -> Result<(), MoonlightStreamProtoError> {
+    pub fn handle_input(&mut self, input: MoonlightStreamInput) -> Result<(), MoonlightError> {
         let _last_now = self.last_now;
         // TODO: all sans io structs MUST be updated via timeout even if it isn't their event
 
@@ -818,7 +825,7 @@ impl MoonlightStreamSetup {
     fn generate_client_sdp(
         &self,
         server_sdp: &ServerSdp,
-    ) -> Result<(ClientSdp, OpusMultistreamConfig, VideoFormat), MoonlightStreamProtoError> {
+    ) -> Result<(ClientSdp, OpusMultistreamConfig, VideoFormat), MoonlightStreamSetupError> {
         // TODO: implement other changes from that fn: https://github.com/moonlight-stream/moonlight-common-c/blob/3a377e7d7be7776d68a57828ae22283144285f90/src/SdpGenerator.c#L255-L543
 
         // -- Moonlight Features

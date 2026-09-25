@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use tracing::{Level, debug, instrument};
 
-use crate::webrtc::WebRTCParseError;
+use crate::error::MoonlightError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WebRTCLinkHeader {
@@ -100,7 +100,7 @@ struct LinkHeader {
     parameters: Vec<(String, String)>,
 }
 
-fn parse_link_header(s: &mut &str) -> Result<Vec<LinkHeader>, WebRTCParseError> {
+fn parse_link_header(s: &mut &str) -> Result<Vec<LinkHeader>, MoonlightError> {
     take_whitespaces(s);
 
     let mut links = Vec::new();

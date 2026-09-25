@@ -19,7 +19,7 @@ use crate::{
         launch::{ClientStreamRequest, LaunchEndpoint},
         pair::{
             PairEndpoint, PairPin, PairingCryptoBackend,
-            client::{ClientPairing, ClientPairingError, ClientPairingOutput},
+            client::{ClientPairing, ClientPairingOutput},
         },
         resume::ResumeEndpoint,
         server_info::{

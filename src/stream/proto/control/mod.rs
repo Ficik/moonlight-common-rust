@@ -8,11 +8,11 @@ use std::{
 
 use sans_io_time::Instant;
 
-use rusty_enet::error::PeerSendError;
 use tracing::{Level, debug, info, instrument, trace, warn};
 
 use crate::{
     ServerVersion,
+    error::MoonlightError,
     http::server_info::ApolloPermissions,
     stream::{
         AesKey,
@@ -26,12 +26,11 @@ use crate::{
                     PERIODIC_PING_INTERVAL, PERIODIC_PING_VERSION,
                 },
                 peer::{
-                    ControlConnectConfig, ControlEncryptionMethod, ControlError, ControlHost,
-                    ControlHostConfig, ControlHostEvent, ControlPeerConfig, ControlPeerId,
-                    ControlPeerRole,
+                    ControlConnectConfig, ControlEncryptionMethod, ControlHost, ControlHostConfig,
+                    ControlHostEvent, ControlPeerConfig, ControlPeerId, ControlPeerRole,
+                    PacketSendError,
                 },
             },
-            enet::EnetError,
             runtime::UdpStream,
             soonest,
         },
@@ -97,13 +96,13 @@ impl ControlStream {
         now: Instant,
         config: ControlStreamConfig,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, ControlError> {
+    ) -> Result<Self, MoonlightError> {
         debug!("new control stream");
 
         if config.server_version.major < 5 {
             // Servers below v5 use tcp and don't have encryption support
             // https://github.com/moonlight-stream/moonlight-common-c/blob/7b026e77be62175104640e7e722b758df6d3d0d7/src/ControlStream.c#L849-L856
-            return Err(ControlError::VersionNotSupported(config.server_version));
+            return Err(MoonlightError::ServerVersionNotSupported(config.server_version).into());
         }
 
         // All values that could lead to an error are controlled by us and won't cause errors
@@ -120,7 +119,9 @@ impl ControlStream {
         .unwrap();
 
         let packets = ControlPacketConfig::new(config.server_version, config.encryption.is_some())
-            .ok_or(ControlError::VersionNotSupported(config.server_version))?;
+            .ok_or(MoonlightError::ServerVersionNotSupported(
+                config.server_version,
+            ))?;
 
         // All values that could lead to an error are controlled by us and won't cause errors
         // -> This cannot fail
@@ -156,14 +157,14 @@ impl ControlStream {
         })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, ControlError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, PacketSendError> {
         self.host
             .peer_estimated_rtt(self.peer)
-            .ok_or(ControlError::NotConnected)
+            .ok_or(PacketSendError::PeerNotConnected)
     }
 
     /// This will intelligently batch or instantly send the input based on if it makes sense to do so.
-    pub fn batch_input(&mut self, input: ClientInputEvent) -> Result<(), ControlError> {
+    pub fn batch_input(&mut self, input: ClientInputEvent) -> Result<(), MoonlightError> {
         trace!(input = ?input, "batching input for control stream");
 
         self.check_input_supported(&input)?;
@@ -178,7 +179,7 @@ impl ControlStream {
     /// Will send all batched inputs now.
     ///
     /// This is automatically done if you're following the default event loop of this struct.
-    pub fn send_batched_inputs_now(&mut self) -> Result<(), ControlError> {
+    pub fn send_batched_inputs_now(&mut self) -> Result<(), MoonlightError> {
         self.last_batch_send = self.last_now;
 
         for packet in self.batcher.remove_batched_inputs() {
@@ -188,19 +189,19 @@ impl ControlStream {
         Ok(())
     }
 
-    fn check_input_supported(&self, input: &ClientInputEvent) -> Result<(), ControlError> {
+    fn check_input_supported(&self, input: &ClientInputEvent) -> Result<(), PacketSendError> {
         if let Some(permissions) = &self.apollo_permissions {
             match input {
                 ClientInputEvent::ControllerConnect { .. }
                 | ClientInputEvent::ControllerDisconnect { .. }
                 | ClientInputEvent::ControllerState { .. } => {
                     if !permissions.contains(ApolloPermissions::INPUT_CONTROLLER) {
-                        return Err(ControlError::ApolloPermissionDenied);
+                        return Err(PacketSendError::ApolloPermissionDenied);
                     }
                 }
                 ClientInputEvent::Keyboard { .. } => {
                     if !permissions.contains(ApolloPermissions::INPUT_KEYBOARD) {
-                        return Err(ControlError::ApolloPermissionDenied);
+                        return Err(PacketSendError::ApolloPermissionDenied);
                     }
                 }
                 ClientInputEvent::MouseButton { .. }
@@ -209,17 +210,17 @@ impl ControlStream {
                 | ClientInputEvent::MouseScrollHorizontal { .. }
                 | ClientInputEvent::MouseScrollVertical { .. } => {
                     if !permissions.contains(ApolloPermissions::INPUT_MOUSE) {
-                        return Err(ControlError::ApolloPermissionDenied);
+                        return Err(PacketSendError::ApolloPermissionDenied);
                     }
                 }
                 ClientInputEvent::Touch { .. } => {
                     if !permissions.contains(ApolloPermissions::INPUT_TOUCH) {
-                        return Err(ControlError::ApolloPermissionDenied);
+                        return Err(PacketSendError::ApolloPermissionDenied);
                     }
                 }
                 ClientInputEvent::Pen { .. } => {
                     if !permissions.contains(ApolloPermissions::INPUT_PEN) {
-                        return Err(ControlError::ApolloPermissionDenied);
+                        return Err(PacketSendError::ApolloPermissionDenied);
                     }
                 }
             }
@@ -229,13 +230,15 @@ impl ControlStream {
             ClientInputEvent::MouseScrollHorizontal { .. }
                 if !self.server_version.is_sunshine_like() =>
             {
-                Err(ControlError::PacketNotSupported(ControlPacketNotSupported))
+                Err(PacketSendError::PacketNotSupported(
+                    ControlPacketNotSupported,
+                ))
             }
             _ => Ok(()),
         }
     }
 
-    pub fn disconnect(&mut self, disconnect_data: u32) -> Result<(), ControlError> {
+    pub fn disconnect(&mut self, disconnect_data: u32) -> Result<(), MoonlightError> {
         self.host.disconnect(self.peer, disconnect_data)?;
 
         Ok(())
@@ -244,14 +247,14 @@ impl ControlStream {
         self.host.can_discard()
     }
 
-    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), ControlError> {
+    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), MoonlightError> {
         self.send_inner(packet, false)
     }
     pub(crate) fn send_inner(
         &mut self,
         packet: ControlPacket,
         force_packet: bool,
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), MoonlightError> {
         if force_packet && !self.peer_connected {
             trace!(force_packet = force_packet, packet = ?packet, "buffering forced packet");
 
@@ -266,7 +269,7 @@ impl ControlStream {
         Ok(())
     }
 
-    fn do_batching(&mut self) -> Result<(), ControlError> {
+    fn do_batching(&mut self) -> Result<(), MoonlightError> {
         if !self.batcher.is_dirty() {
             return Ok(());
         }
@@ -279,7 +282,7 @@ impl ControlStream {
     }
 
     /// Returns the time when the next ping must be sent
-    fn do_ping(&mut self) -> Result<(), ControlError> {
+    fn do_ping(&mut self) -> Result<(), MoonlightError> {
         // If this server doesn't support the periodic ping
         let Some(last_ping) = self.last_ping else {
             trace!("server doesn't support periodic ping, not sending periodic ping");
@@ -289,8 +292,7 @@ impl ControlStream {
         if self.last_now >= last_ping + PERIODIC_PING_INTERVAL {
             match self.send_raw(ControlPacket::PeriodicPing) {
                 Ok(()) => {}
-                Err(ControlError::Enet(EnetError::PeerSendError(PeerSendError::NotConnected)))
-                | Err(ControlError::NotConnected) => {
+                Err(MoonlightError::PacketSend(PacketSendError::PeerNotConnected)) => {
                     trace!(
                         self = ?self,
                         "not sending periodic ping because the control stream (via enet) is not connected yet."
@@ -313,7 +315,7 @@ impl ControlStream {
         Ok(())
     }
 
-    fn do_update(&mut self, now: Instant) -> Result<(), ControlError> {
+    fn do_update(&mut self, now: Instant) -> Result<(), MoonlightError> {
         self.last_now = now;
 
         if self.peer_connected {
@@ -323,7 +325,7 @@ impl ControlStream {
             trace!("erroring with NotConnected because the host can be discarded");
             // This only happens when there's no peer in the connection
             // -> we must've disconnected somehow -> this object is not useable anymore
-            return Err(ControlError::NotConnected);
+            return Err(PacketSendError::PeerNotConnected.into());
         }
 
         // Handle events
@@ -427,7 +429,7 @@ impl Debug for ControlStream {
 }
 
 impl UdpStream for ControlStream {
-    type Error = ControlError;
+    type Error = MoonlightError;
 
     type Event = ControlStreamEvent;
 

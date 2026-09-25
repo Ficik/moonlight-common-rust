@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    ffi::NulError,
     fmt::{Debug, Display},
     num::ParseIntError,
     str::FromStr,
@@ -8,36 +7,13 @@ use std::{
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum MoonlightError {
-    #[error("couldn't aquire an instance")]
-    InstanceAquire,
-    #[error("a connection is already active")]
-    ConnectionAlreadyExists,
-    #[error("the host doesn't support this feature")]
-    NotSupportedOnHost,
-    #[error("an error happened whilst sending an event")]
-    EventSendError(i32),
-    #[error("this call requires a GFE version which uses ENet")]
-    ENetRequired,
-    #[error("a string contained a nul byte which is not allowed in c strings")]
-    StringNulError(#[from] NulError),
-    #[error("couldn't establish a connection")]
-    ConnectionFailed,
-    #[error("the client is not paired")]
-    NotPaired,
-}
-
-pub mod http;
-pub mod stream;
-
-pub mod mac;
+pub mod error;
 
 pub mod crypto;
-
 pub mod high;
-
+pub mod http;
+pub mod mac;
+pub mod stream;
 pub mod webrtc;
 
 #[cfg(test)]

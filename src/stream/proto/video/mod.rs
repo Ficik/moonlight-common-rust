@@ -7,24 +7,25 @@ use std::{
 
 use sans_io_time::Instant;
 
-use thiserror::Error;
 use tracing::{Level, debug, info, instrument, trace};
 
-use crate::stream::{
-    AesKey,
-    proto::{
-        DynCryptoBackend,
-        crypto::CryptoError,
-        packet::SunshinePing,
-        ping::{PingSender, PingSenderConfig},
-        runtime::UdpStream,
-        video::{
-            depayloader::{VideoDepayloader, VideoDepayloaderConfig, VideoDepayloaderError},
-            frame::OwnedVideoFrame,
-            packet::{FrameType, RtpVideoHeader, VIDEO_RECV_BUFFERED_PACKETS},
+use crate::{
+    error::MoonlightError,
+    stream::{
+        AesKey,
+        proto::{
+            DynCryptoBackend,
+            packet::SunshinePing,
+            ping::{PingSender, PingSenderConfig},
+            runtime::UdpStream,
+            video::{
+                depayloader::{VideoDepayloader, VideoDepayloaderConfig},
+                frame::OwnedVideoFrame,
+                packet::{FrameType, RtpVideoHeader, VIDEO_RECV_BUFFERED_PACKETS},
+            },
         },
+        video::FrameIndex,
     },
-    video::FrameIndex,
 };
 
 pub mod depayloader;
@@ -43,14 +44,6 @@ const FULL_FRAME_RECEIVE_TIMEOUT: Duration = Duration::from_millis(100);
 const STALL_TIMEOUT: Duration = Duration::from_millis(2000);
 /// The time between each idr request
 const IDR_REQUEST_TIMEOUT: Duration = Duration::from_millis(1000);
-
-#[derive(Debug, Error)]
-pub enum VideoStreamError {
-    #[error("depayloader: {0}")]
-    Depayloader(#[from] VideoDepayloaderError),
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
-}
 
 #[derive(Debug)]
 pub enum VideoStreamEvent {
@@ -115,7 +108,7 @@ impl VideoStream {
         }
     }
 
-    fn do_idr_request(&mut self) -> Result<(), VideoStreamError> {
+    fn do_idr_request(&mut self) -> Result<(), MoonlightError> {
         // request an idr if needed
         let timeout = self.wait_until_idr();
 
@@ -175,7 +168,7 @@ impl VideoStream {
         timeout
     }
 
-    fn update(&mut self, now: Instant) -> Result<(), VideoStreamError> {
+    fn update(&mut self, now: Instant) -> Result<(), MoonlightError> {
         let mut frame_to_return = None;
 
         // Add the first seen numbers
@@ -276,7 +269,7 @@ impl Drop for VideoStream {
 }
 
 impl UdpStream for VideoStream {
-    type Error = VideoStreamError;
+    type Error = MoonlightError;
 
     type Event = VideoStreamEvent;
 

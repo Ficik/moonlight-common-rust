@@ -2,11 +2,11 @@ use thiserror::Error;
 
 use tracing::{Level, debug, instrument, trace};
 
-use crate::stream::{
-    AesKey,
-    proto::{
-        crypto::{CryptoBackend, CryptoError},
-        rtsp::packet::RtspEncryptionHeader,
+use crate::{
+    error::MoonlightError,
+    stream::{
+        AesKey,
+        proto::{crypto::CryptoBackend, rtsp::packet::RtspEncryptionHeader},
     },
 };
 
@@ -20,8 +20,11 @@ pub enum RtspEncryptionError {
     EncryptedMessageWrongSize,
     #[error("the provided output buffer is too small")]
     OutputTooSmall,
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
+}
+impl From<RtspEncryptionError> for MoonlightError {
+    fn from(value: RtspEncryptionError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 /// References:
@@ -32,13 +35,13 @@ pub fn encrypt_client_rtsp_message_into<Crypto>(
     sequence_number: usize,
     message: &[u8],
     encrypted_message: &mut [u8],
-) -> Result<usize, RtspEncryptionError>
+) -> Result<usize, MoonlightError>
 where
     Crypto: CryptoBackend,
 {
     let len = RtspEncryptionHeader::SIZE + message.len();
     if encrypted_message.len() < len {
-        return Err(RtspEncryptionError::OutputTooSmall);
+        return Err(RtspEncryptionError::OutputTooSmall.into());
     }
 
     let mut iv = [0; 12];
@@ -85,12 +88,12 @@ pub fn decrypt_client_rtsp_message_into<Crypto>(
     aes_key: AesKey,
     encrypted_message: &[u8],
     message: &mut [u8],
-) -> Result<usize, RtspEncryptionError>
+) -> Result<usize, MoonlightError>
 where
     Crypto: CryptoBackend,
 {
     if encrypted_message.len() < RtspEncryptionHeader::SIZE {
-        return Err(RtspEncryptionError::MessageTooSmallHeader);
+        return Err(RtspEncryptionError::MessageTooSmallHeader.into());
     }
 
     // We checked that the size must match
@@ -103,12 +106,12 @@ where
     trace!(header = ?header, "parsed encryption header");
 
     if !header.encrypted {
-        return Err(RtspEncryptionError::MessageUnencrypted);
+        return Err(RtspEncryptionError::MessageUnencrypted.into());
     }
 
     if encrypted_message.len() != RtspEncryptionHeader::SIZE + header.len {
         debug!(header = ?header, expected_len = RtspEncryptionHeader::SIZE + header.len, got_len = encrypted_message.len(), "encrypted rtsp message doesn't match expected size");
-        return Err(RtspEncryptionError::EncryptedMessageWrongSize);
+        return Err(RtspEncryptionError::EncryptedMessageWrongSize.into());
     }
     let message_len = header.len;
     let ciphertext =
@@ -121,7 +124,7 @@ where
     iv[11] = b'R'; // RTSP
 
     if message.len() < ciphertext.len() {
-        return Err(RtspEncryptionError::OutputTooSmall);
+        return Err(RtspEncryptionError::OutputTooSmall.into());
     }
 
     crypto_backend.decrypt_aes_gcm(
@@ -142,13 +145,13 @@ pub fn encrypt_server_rtsp_message_into<Crypto>(
     sequence_number: usize,
     message: &[u8],
     encrypted_message: &mut [u8],
-) -> Result<usize, RtspEncryptionError>
+) -> Result<usize, MoonlightError>
 where
     Crypto: CryptoBackend,
 {
     let len = RtspEncryptionHeader::SIZE + message.len();
     if encrypted_message.len() < len {
-        return Err(RtspEncryptionError::OutputTooSmall);
+        return Err(RtspEncryptionError::OutputTooSmall.into());
     }
 
     let mut iv = [0; 12];
@@ -192,12 +195,12 @@ pub fn decrypt_server_rtsp_message_into<Crypto>(
     aes_key: AesKey,
     encrypted_message: &[u8],
     message: &mut [u8],
-) -> Result<usize, RtspEncryptionError>
+) -> Result<usize, MoonlightError>
 where
     Crypto: CryptoBackend,
 {
     if encrypted_message.len() < RtspEncryptionHeader::SIZE {
-        return Err(RtspEncryptionError::MessageTooSmallHeader);
+        return Err(RtspEncryptionError::MessageTooSmallHeader.into());
     }
 
     // We checked that the size must match
@@ -210,12 +213,12 @@ where
     trace!(header = ?header, "parsed encryption header");
 
     if !header.encrypted {
-        return Err(RtspEncryptionError::MessageUnencrypted);
+        return Err(RtspEncryptionError::MessageUnencrypted.into());
     }
 
     if encrypted_message.len() != RtspEncryptionHeader::SIZE + header.len {
         debug!(header = ?header, expected_len = RtspEncryptionHeader::SIZE + header.len, got_len = encrypted_message.len(), "encrypted rtsp message doesn't match expected size");
-        return Err(RtspEncryptionError::EncryptedMessageWrongSize);
+        return Err(RtspEncryptionError::EncryptedMessageWrongSize.into());
     }
     let message_len = header.len;
     let ciphertext =
@@ -228,7 +231,7 @@ where
     iv[11] = b'R'; // RTSP
 
     if message.len() < ciphertext.len() {
-        return Err(RtspEncryptionError::OutputTooSmall);
+        return Err(RtspEncryptionError::OutputTooSmall.into());
     }
 
     crypto_backend.decrypt_aes_gcm(

@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::{
     crypto::disabled::DisabledCryptoBackend,
+    error::MoonlightError,
     stream::{
         AesIv, AesKey,
         proto::{
@@ -15,7 +16,7 @@ use crate::{
                     RTP_PAYLOAD_TYPE_AUDIO_FEC, RtpAudioHeader,
                 },
             },
-            crypto::{CryptoBackend, CryptoError, round_to_pkcs7_safe_len},
+            crypto::{CryptoBackend, round_to_pkcs7_safe_len},
         },
     },
 };
@@ -32,8 +33,12 @@ pub enum AudioPayloaderError {
     /// This frame is bigger than allowed
     #[error("opus frame has invalid size")]
     InvalidFrameSize,
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
+}
+
+impl From<AudioPayloaderError> for MoonlightError {
+    fn from(value: AudioPayloaderError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 pub struct AudioPayloader<Crypto> {
@@ -85,9 +90,9 @@ where
     }
 
     /// Pushes one opus frame to the payloader.
-    pub fn push_frame(&mut self, timestamp: u32, frame: &[u8]) -> Result<(), AudioPayloaderError> {
+    pub fn push_frame(&mut self, timestamp: u32, frame: &[u8]) -> Result<(), MoonlightError> {
         if frame.len() != self.frame_len {
-            return Err(AudioPayloaderError::InvalidFrameSize);
+            return Err(AudioPayloaderError::InvalidFrameSize.into());
         }
 
         let mut packet = self.dequeue_packet()?;
@@ -252,7 +257,7 @@ where
         RtpAudioHeader::SIZE + AudioFecHeader::SIZE + payload_len
     }
 
-    fn dequeue_packet(&mut self) -> Result<Vec<u8>, AudioPayloaderError> {
+    fn dequeue_packet(&mut self) -> Result<Vec<u8>, MoonlightError> {
         if let Some(mut vec) = self.unused.pop() {
             vec.resize(self.safe_packet_size(), 0);
             return Ok(vec);
