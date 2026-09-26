@@ -16,8 +16,6 @@ impl From<roxmltree::Error> for MoonlightError {
     }
 }
 
-const ERROR_CONTEXT: &str = "http xml";
-
 pub mod app_list;
 pub mod box_art;
 pub mod cancel;

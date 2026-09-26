@@ -24,13 +24,30 @@ use tracing::{Level, debug, instrument};
 use crate::{
     error::MoonlightError,
     http::{
-        ClientInfo, Endpoint, ParseError, TextResponse,
+        ClientInfo, Endpoint, TextResponse,
         client::{
             DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, async_client::RequestClient,
             hyperlike::build_url,
         },
     },
 };
+
+impl From<hyper::Error> for MoonlightError {
+    fn from(value: hyper::Error) -> Self {
+        if value.is_timeout() {
+            return Self::ConnectionTimeout;
+        } else if value.is_shutdown() || value.is_canceled() || value.is_closed() {
+            return Self::ConnectionFailed;
+        }
+
+        Self::Other(value.into())
+    }
+}
+impl From<hyper_util::client::legacy::Error> for MoonlightError {
+    fn from(value: hyper_util::client::legacy::Error) -> Self {
+        todo!()
+    }
+}
 
 #[derive(Debug)]
 struct NoHostnameVerifier<Base> {
@@ -143,7 +160,7 @@ impl RequestClient for TokioHyperClient {
     ) -> Result<Self, MoonlightError> {
         // Client
         if !client_private_key.tag().eq_ignore_ascii_case("PRIVATE KEY") {
-            return Err(MoonlightError::InvalidPrivateKey);
+            return Err(MoonlightError::Other("".into()));
         }
         let private_key = PrivateKeyDer::from_pem(
             SectionKind::PrivateKey,
@@ -201,7 +218,7 @@ impl RequestClient for TokioHyperClient {
     where
         E: Endpoint,
         E::Request: Sync,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
         let url = build_url::<E>(false, client_info, hostport, request)?;
 
@@ -222,11 +239,11 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint,
         E::Request: Sync,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
         let url = build_url::<E>(true, client_info, hostport, request)?;
 
@@ -247,7 +264,7 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint<Response = Vec<u8>>,
         E::Request: Sync,

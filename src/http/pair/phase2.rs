@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::MoonlightError,
+    error::{MoonlightError, parse_hex},
     http::{
         QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -44,13 +44,16 @@ impl Request for PairPhase2Request {
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 2";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
         // let update_state: i32 = query_map.get("updateState")?.parse()?;
 
         let encrypted_challenge_hex = query_map.get("clientchallenge")?;
-        let encrypted_challenge = hex::decode(encrypted_challenge_hex.as_bytes())?;
+        let encrypted_challenge =
+            parse_hex(ERROR_CONTEXT, "clientchallenge", &encrypted_challenge_hex)?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -99,13 +102,16 @@ impl FromStr for PairPhase2Response {
     type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "challengeresponse";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         let challenge_response_str = parse_xml_child_text(root, "challengeresponse")?;
-        let challenge_response = hex::decode(challenge_response_str)?;
+        let challenge_response =
+            parse_hex(ERROR_CONTEXT, "challengeresponse", challenge_response_str)?;
 
         Ok(PairPhase2Response {
             paired,

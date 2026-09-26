@@ -28,20 +28,6 @@ pub enum UreqError {
     Http(#[from] http::Error),
 }
 
-impl RequestError for UreqError {
-    fn is_connect(&self) -> bool {
-        matches!(
-            self,
-            Self::Ureq(ureq::Error::HostNotFound)
-                | Self::Ureq(ureq::Error::ConnectionFailed)
-                | Self::Ureq(ureq::Error::Io(_))
-        )
-    }
-    fn is_encryption(&self) -> bool {
-        matches!(self, Self::Ureq(ureq::Error::Tls(_)))
-    }
-}
-
 impl TryInto<ParseError> for UreqError {
     type Error = Self;
 
@@ -54,8 +40,6 @@ impl TryInto<ParseError> for UreqError {
 }
 
 impl RequestClient for UreqClient {
-    type Error = UreqError;
-
     fn with_defaults() -> Result<Self, Self::Error> {
         let config = Agent::config_builder()
             .timeout_global(Some(DEFAULT_TIMEOUT))

@@ -360,13 +360,13 @@ fn response_host_info_auth_fail() {
     "#,
     );
 
-    assert_eq!(
+    assert!(matches!(
         ServerInfoResponse::from_str(&text).unwrap_err(),
         MoonlightError::StatusCode {
             code: 401,
-            reason: "The client is not authorized. Certificate verification failed.".to_string(),
-        }
-    );
+            reason
+        } if reason == "The client is not authorized. Certificate verification failed."
+    ));
 }
 
 #[test]
@@ -651,13 +651,10 @@ fn response_launch_fail() {
 "#,
     );
 
-    assert_eq!(
+    assert!(matches!(
         LaunchResponse::from_str(&response).unwrap_err(),
-        MoonlightError::StatusCode {
-            code: -1,
-            reason: "Failed to start the specified application".to_string()
-        }
-    );
+        MoonlightError::StatusCode { code: -1, reason } if reason == "Failed to start the specified application"
+    ),);
 }
 
 #[test]

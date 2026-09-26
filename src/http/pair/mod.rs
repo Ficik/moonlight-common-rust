@@ -14,10 +14,10 @@ use roxmltree::Node;
 
 use crate::{
     ServerVersion,
-    error::MoonlightError,
+    error::{MoonlightError, parse_i32},
     http::{
-        ClientIdentifier, ClientSecret, ERROR_CONTEXT, Endpoint, QueryBuilder, QueryBuilderError,
-        QueryMap, Request, ServerIdentifier, TextResponse,
+        ClientIdentifier, ClientSecret, Endpoint, QueryBuilder, QueryBuilderError, QueryMap,
+        Request, ServerIdentifier, TextResponse,
         helper::parse_xml_child_text,
         pair::{
             phase1::{PairPhase1Request, PairPhase1Response},
@@ -189,9 +189,9 @@ impl Request for PairRequest {
             PairPhase5Request::from_query_params(query_map).map(Self::Phase5)
         } else {
             Err(MoonlightError::InvalidValue {
-                context: ERROR_CONTEXT,
-                expected: "any important attribute that relates to the pairing stage",
-                got: format!("none"),
+                context: "http query: pair (no phase)",
+                expected: "any important attribute that relates to the phase",
+                got: phrase.unwrap_or("none").to_string(),
             })
         }
     }
@@ -234,9 +234,14 @@ impl FromStr for PairResponse {
 }
 
 fn parse_xml_child_paired<'doc, 'node>(
+    context: &'static str,
     list_node: Node<'node, 'doc>,
 ) -> Result<bool, MoonlightError> {
-    let paired: i32 = parse_xml_child_text(list_node, "paired")?.parse()?;
+    let paired: i32 = parse_i32(
+        context,
+        "paired",
+        parse_xml_child_text(list_node, "paired")?,
+    )?;
     Ok(paired == 1)
 }
 

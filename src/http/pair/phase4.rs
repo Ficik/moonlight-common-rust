@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::MoonlightError,
+    error::{MoonlightError, parse_hex},
     http::{
         QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::parse_xml_root_node, pair::parse_xml_child_paired,
@@ -43,13 +43,19 @@ impl Request for PairPhase4Request {
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 4";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
         // let update_state: i32 = query_map.get("updateState")?.parse()?;
 
         let client_pairing_secret_hex = query_map.get("clientpairingsecret")?;
-        let client_pairing_secret = hex::decode(client_pairing_secret_hex.as_bytes())?;
+        let client_pairing_secret = parse_hex(
+            ERROR_CONTEXT,
+            "clientpairingsecret",
+            &client_pairing_secret_hex,
+        )?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -87,10 +93,12 @@ impl FromStr for PairPhase4Response {
     type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: pair 4";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         Ok(Self { paired })
     }

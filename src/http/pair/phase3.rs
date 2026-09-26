@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::MoonlightError,
+    error::{MoonlightError, parse_hex},
     http::{
         QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -44,13 +44,21 @@ impl Request for PairPhase3Request {
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 3";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
         // let update_state: i32 = query_map.get("updateState")?.parse()?;
 
         let encrypted_challenge_hex = query_map.get("serverchallengeresp")?;
-        let encrypted_challenge_response_hash = hex::decode(encrypted_challenge_hex.as_bytes())?;
+        let encrypted_challenge_response_hash = hex::decode(encrypted_challenge_hex.as_bytes())
+            .map_err(|_| MoonlightError::InvalidAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "serverchallengeresp",
+                expected: "hex bytes",
+                got: encrypted_challenge_hex.to_string(),
+            })?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -96,13 +104,15 @@ impl FromStr for PairPhase3Response {
     type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: pair 3";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         let pairing_secret_str = parse_xml_child_text(root, "pairingsecret")?;
-        let pairing_secret = hex::decode(pairing_secret_str)?;
+        let pairing_secret = parse_hex(ERROR_CONTEXT, "pairingsecret", pairing_secret_str)?;
 
         Ok(PairPhase3Response {
             paired,

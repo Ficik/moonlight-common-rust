@@ -7,7 +7,7 @@ use roxmltree::Document;
 
 use crate::{
     AppId,
-    error::MoonlightError,
+    error::{MoonlightError, parse_u32},
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{
@@ -16,6 +16,8 @@ use crate::{
     },
     stream::{AesIv, AesKey, audio::AudioConfig},
 };
+
+const ERROR_CONTEXT: &str = "http xml: launch";
 
 /// Launches a new session.
 ///
@@ -328,7 +330,11 @@ impl FromStr for LaunchResponse {
         };
 
         Ok(LaunchResponse {
-            game_session: parse_xml_child_text(root, "gamesession")?.parse()?,
+            game_session: parse_u32(
+                ERROR_CONTEXT,
+                "gamesession",
+                parse_xml_child_text(root, "gamesession")?,
+            )?,
             rtsp_session_url,
         })
     }

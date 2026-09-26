@@ -3,13 +3,15 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::MoonlightError,
+    error::{MoonlightError, parse_u32},
     http::{
         Endpoint, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
         launch::ClientStreamRequest,
     },
 };
+
+const ERROR_CONTEXT: &str = "http xml: resume";
 
 /// Resumes a session that was already created using a request to [super::launch::LaunchEndpoint].
 pub struct ResumeEndpoint;
@@ -79,7 +81,11 @@ impl FromStr for ResumeResponse {
         };
 
         Ok(ResumeResponse {
-            resume: parse_xml_child_text(root, "resume")?.parse()?,
+            resume: parse_u32(
+                ERROR_CONTEXT,
+                "resume",
+                parse_xml_child_text(root, "resume")?,
+            )?,
             rtsp_session_url,
         })
     }

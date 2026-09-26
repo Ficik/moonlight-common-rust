@@ -4,7 +4,7 @@ use roxmltree::Document;
 
 use crate::{
     App, AppId,
-    error::MoonlightError,
+    error::{MoonlightError, parse_u32},
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -87,6 +87,8 @@ impl FromStr for AppListResponse {
     type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: app list";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
@@ -98,12 +100,18 @@ impl FromStr for AppListResponse {
         {
             let title = parse_xml_child_text(app_node, "AppTitle")?.to_string();
 
-            let id = parse_xml_child_text(app_node, "ID")?.parse().map(AppId)?;
+            let id = parse_u32(
+                ERROR_CONTEXT,
+                "App.ID",
+                parse_xml_child_text(app_node, "ID")?,
+            )
+            .map(AppId)?;
 
-            let is_hdr_supported = parse_xml_child_text(app_node, "IsHdrSupported")
-                .unwrap_or("0")
-                .parse::<u32>()?
-                == 1;
+            let is_hdr_supported = parse_u32(
+                ERROR_CONTEXT,
+                "App.IsHdrSupported",
+                parse_xml_child_text(app_node, "IsHdrSupported").unwrap_or("0"),
+            )? != 0;
 
             let app = App {
                 id,

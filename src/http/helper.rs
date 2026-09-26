@@ -3,7 +3,9 @@ use std::fmt::Write as _;
 
 use roxmltree::{Document, Node};
 
-use crate::{error::MoonlightError, http::ERROR_CONTEXT};
+use crate::error::{MoonlightError, parse_i32};
+
+const ERROR_CONTEXT: &str = "http xml";
 
 pub fn parse_xml_child_text<'doc, 'node>(
     list_node: Node<'node, 'doc>,
@@ -22,7 +24,7 @@ where
     let content = node.text().ok_or(MoonlightError::InvalidValue {
         context: ERROR_CONTEXT,
         expected: "a text node",
-        got: format!("{}", node),
+        got: format!("{:?}", node),
     })?;
 
     Ok(content)
@@ -36,17 +38,19 @@ pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>
         .ok_or(MoonlightError::InvalidValue {
             context: ERROR_CONTEXT,
             expected: "a xml root element",
-            got: format!("{}", doc),
+            got: format!("{:?}", doc),
         })?;
 
     // Important: status code can be negative
-    let status_code = root
-        .attribute("status_code")
-        .ok_or(MoonlightError::MissingAttribute {
-            context: ERROR_CONTEXT,
-            attribute: "status_code",
-        })?
-        .parse::<i32>()?;
+    let status_code = parse_i32(
+        ERROR_CONTEXT,
+        "status_code",
+        root.attribute("status_code")
+            .ok_or(MoonlightError::MissingAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "status_code",
+            })?,
+    )?;
 
     if status_code / 100 != 2 {
         return Err(MoonlightError::StatusCode {

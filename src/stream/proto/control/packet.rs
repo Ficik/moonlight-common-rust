@@ -29,7 +29,7 @@ pub const PERIODIC_PING_INTERVAL: Duration = Duration::from_millis(100);
 /// - Moonlight Version Check: <https://github.com/moonlight-stream/moonlight-common-c/blob/2a5a1f3e8a57cbbb316ed7dfff3a3965c2e77d25/src/ControlStream.c#L354>
 pub const PERIODIC_PING_VERSION: ServerVersion = ServerVersion::new(7, 1, 415, 0);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 #[error("this packet is not supported on this version of moonlight")]
 pub struct ControlPacketNotSupported;
 

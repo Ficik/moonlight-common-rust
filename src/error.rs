@@ -2,11 +2,14 @@ use std::{
     ffi::NulError,
     io,
     net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr,
 };
 
+use pem::Pem;
 use thiserror::Error;
+use uuid::Uuid;
 
-use crate::{ServerVersion, stream::proto::control::peer::PacketSendError};
+use crate::{ServerVersion, mac::MacAddress, stream::proto::control::peer::PacketSendError};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -27,6 +30,8 @@ pub enum MoonlightError {
     )]
     Unauthenticated,
     #[error("couldn't establish a connection")]
+    ConnectionFailed,
+    #[error("couldn't establish a connection because of a timeout")]
     ConnectionTimeout,
     #[error("the host returned an unsuccessful status code({code}): {reason}")]
     StatusCode { code: i32, reason: String },
@@ -55,8 +60,6 @@ pub enum MoonlightError {
     ENetRequired,
     #[error("a string contained a nul byte which is not allowed in c strings")]
     StringNulError(#[from] NulError),
-    #[error("couldn't establish a connection")]
-    ConnectionFailed,
     // -- Crypto
     #[error("failed to decrypt data: {0}")]
     DecryptFailed(&'static str),
@@ -96,7 +99,7 @@ pub enum MoonlightError {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
-fn parse_error(
+pub(crate) fn parse_error(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     expected: &'static str,
@@ -127,7 +130,7 @@ pub(crate) fn parse_u32(
         parse_error(
             context,
             attribute,
-            "a valid positive number or 0 (u32)",
+            "a valid positive integer or 0 (u32)",
             value.to_string(),
         )
     })
@@ -141,7 +144,22 @@ pub(crate) fn parse_u16(
         parse_error(
             context,
             attribute,
-            "a valid positive number or 0 (u16)",
+            "a valid positive integer or 0 (u16)",
+            value.to_string(),
+        )
+    })
+}
+
+pub(crate) fn parse_i32(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<i32, MoonlightError> {
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid integer (i32)",
             value.to_string(),
         )
     })
@@ -192,4 +210,57 @@ pub(crate) fn parse_ipv6(
             value.to_string(),
         )
     })
+}
+
+pub(crate) fn parse_mac(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<MacAddress, MoonlightError> {
+    value
+        .parse()
+        .map_err(|_| parse_error(context, attribute, "a valid mac address", value.to_string()))
+}
+
+pub(crate) fn parse_uuid(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<Uuid, MoonlightError> {
+    value
+        .parse()
+        .map_err(|_| parse_error(context, attribute, "a valid uuid", value.to_string()))
+}
+
+pub(crate) fn parse_server_version(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<ServerVersion, MoonlightError> {
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid sunshine server version",
+            value.to_string(),
+        )
+    })
+}
+
+pub(crate) fn parse_hex(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<Vec<u8>, MoonlightError> {
+    hex::decode(value)
+        .map_err(|_| parse_error(context, attribute, "valid hex bytes", value.to_string()))
+}
+
+pub(crate) fn parse_pem(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<Pem, MoonlightError> {
+    Pem::from_str(value)
+        .map_err(|_| parse_error(context, attribute, "a valid pem string", value.to_string()))
 }
