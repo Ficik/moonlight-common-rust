@@ -14,6 +14,7 @@ use uuid::{Uuid, fmt::Hyphenated};
 
 use crate::{ParseServerStateError, ParseServerVersionError, mac::ParseMacError};
 
+// TODO: remove this error
 #[derive(Debug, Error, PartialEq)]
 pub enum ParseError {
     #[error("the response is invalid xml")]

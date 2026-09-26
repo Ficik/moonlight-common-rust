@@ -36,8 +36,8 @@ use crate::{
             rtsp::{
                 client::{RtspClient, RtspClientConfig, RtspClientError, RtspInput, RtspOutput},
                 moonlight::{
-                    DEFAULT_AUDIO_PORT, ParseMoonlightRtspResponseError, RtspAnnounceRequest,
-                    RtspDescribeRequest, RtspDescribeResponse, RtspOptionsRequest, RtspPlayRequest,
+                    DEFAULT_AUDIO_PORT, RtspAnnounceRequest, RtspDescribeRequest,
+                    RtspDescribeResponse, RtspOptionsRequest, RtspPlayRequest,
                     RtspSetupAudioRequest, RtspSetupAudioResponse, RtspSetupControlRequest,
                     RtspSetupControlResponse, RtspSetupVideoRequest, RtspSetupVideoResponse,
                 },
@@ -89,10 +89,6 @@ pub const DEFAULT_RTSP_PORT: u16 = 48010;
 
 #[derive(Debug, Error)]
 pub enum MoonlightStreamSetupError {
-    #[error("rtsp: {0}")]
-    Rtsp(#[from] RtspClientError),
-    #[error("parse rtsp response: {0}")]
-    RtspParse(#[from] ParseMoonlightRtspResponseError),
     #[error("sunshine returned the wrong session id: \"{session}\"")]
     WrongSessionId {
         expected_session: String,

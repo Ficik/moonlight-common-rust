@@ -1,28 +1,29 @@
 use pem::Pem;
 
-use crate::http::{ClientInfo, Endpoint, ParseError, TextResponse, client::RequestError};
+use crate::{
+    error::MoonlightError,
+    http::{ClientInfo, Endpoint, ParseError, TextResponse},
+};
 
 ///
 /// A blocking request client that can make requests to an [Endpoint].
 ///
 pub trait RequestClient: Sized + Clone {
-    type Error: RequestError;
-
-    fn with_defaults() -> Result<Self, Self::Error>;
-    fn with_defaults_long_timeout() -> Result<Self, Self::Error>;
+    fn with_defaults() -> Result<Self, MoonlightError>;
+    fn with_defaults_long_timeout() -> Result<Self, MoonlightError>;
 
     fn with_certificates(
         client_private_key: &Pem,
         client_certificate: &Pem,
         server_certificate: &Pem,
-    ) -> Result<Self, Self::Error>;
+    ) -> Result<Self, MoonlightError>;
 
     fn send_http<E>(
         &self,
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint,
         E::Response: TextResponse<Err = ParseError>;
@@ -32,7 +33,7 @@ pub trait RequestClient: Sized + Clone {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint,
         E::Response: TextResponse<Err = ParseError>;
@@ -42,7 +43,7 @@ pub trait RequestClient: Sized + Clone {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint<Response = Vec<u8>>;
 }

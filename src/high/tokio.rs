@@ -1,5 +1,4 @@
 use std::{
-    error::Error,
     io,
     net::{Ipv4Addr, SocketAddrV4},
 };
@@ -12,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
-    high::MoonlightError,
+    error::MoonlightError,
     http::{
         ClientIdentifier, ClientInfo, ClientSecret, DEFAULT_UNIQUE_ID, ServerIdentifier,
         app_list::{AppListEndpoint, AppListRequest, AppListResponse},
@@ -77,24 +76,10 @@ struct Authenticated {
     server_identifier: ServerIdentifier,
 }
 
-fn req_err<Err>(err: Err) -> MoonlightError
-where
-    Err: Error + Send + Sync + 'static,
-{
-    MoonlightError::Backend(Box::new(err))
-}
-fn crypto_err<Err>(err: ClientPairingError<Err>) -> MoonlightError
-where
-    Err: Error + Send + Sync + 'static,
-{
-    MoonlightError::Pairing(ClientPairingError::from_err(err))
-}
-
 /// TODO: some docs
 impl<Client> MoonlightHost<Client>
 where
     Client: RequestClient,
-    <Client as RequestClient>::Error: Error + Send + Sync + 'static,
 {
     pub fn new(
         address: String,
@@ -102,7 +87,7 @@ where
         unique_id: Option<String>,
     ) -> Result<Self, MoonlightError> {
         Ok(Self {
-            client: Mutex::new(Client::with_defaults().map_err(req_err)?),
+            client: Mutex::new(Client::with_defaults()?),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
@@ -137,8 +122,7 @@ where
                 &http_address,
                 &ServerInfoRequest {},
             )
-            .await
-            .map_err(req_err)?;
+            .await?;
 
         let https_port = server_info.https_port;
         cache_lock.server_info = Some(server_info);
@@ -152,8 +136,7 @@ where
                     &https_address,
                     &ServerInfoRequest {},
                 )
-                .await
-                .map_err(req_err)?;
+                .await?;
 
             cache_lock.server_info = Some(server_info_secure);
 
@@ -163,8 +146,7 @@ where
                     &https_address,
                     &AppListRequest {},
                 )
-                .await
-                .map_err(req_err)?;
+                .await?;
 
             cache_lock.app_list = Some(app_list);
         } else {
@@ -269,8 +251,7 @@ where
             &client_secret.to_pem(),
             &client_identifier.to_pem(),
             &server_identifier.to_pem(),
-        )
-        .map_err(req_err)?;
+        )?;
 
         {
             let mut client_lock = self.client.lock().await;
@@ -333,7 +314,7 @@ where
             uuid: Uuid::new_v4(),
         };
 
-        let mut client = Client::with_defaults_long_timeout().map_err(req_err)?;
+        let mut client = Client::with_defaults_long_timeout()?;
 
         let mut pairing = ClientPairing::new(
             client_identifier.clone(),
@@ -342,8 +323,7 @@ where
             device_name,
             pin,
             crypto_provider,
-        )
-        .map_err(crypto_err)?;
+        )?;
 
         match self
             .pair_impl(
@@ -375,7 +355,7 @@ where
         }
 
         // Update our info
-        self.update().await.map_err(req_err)?;
+        self.update().await?;
 
         Ok(())
     }
@@ -395,22 +375,20 @@ where
         let mut server_identifier = None;
 
         loop {
-            match pairing.poll_output().map_err(crypto_err)? {
+            match pairing.poll_output()? {
                 ClientPairingOutput::SendHttpPairRequest(request) => {
                     let response = client
                         .send_http::<PairEndpoint>(client_info.clone(), http_address, &request)
-                        .await
-                        .map_err(req_err)?;
+                        .await?;
 
-                    pairing.handle_response(response).map_err(crypto_err)?;
+                    pairing.handle_response(response)?;
                 }
                 ClientPairingOutput::SetServerIdentifier(new_server_identifier) => {
                     *client = Client::with_certificates(
                         &client_secret.to_pem(),
                         &client_identifier.to_pem(),
                         &new_server_identifier.to_pem(),
-                    )
-                    .map_err(req_err)?;
+                    )?;
 
                     server_identifier = Some(new_server_identifier);
                 }
@@ -422,10 +400,9 @@ where
 
                     let response = client
                         .send_https::<PairEndpoint>(client_info.clone(), https_address, &request)
-                        .await
-                        .map_err(req_err)?;
+                        .await?;
 
-                    pairing.handle_response(response).map_err(crypto_err)?;
+                    pairing.handle_response(response)?;
                 }
                 ClientPairingOutput::Success => {
                     {
@@ -460,10 +437,9 @@ where
 
             client
                 .send_https::<UnpairEndpoint>(client_info, &https_address, &UnpairRequest {})
-                .await
-                .map_err(req_err)?;
+                .await?;
 
-            let new_client = Client::with_defaults().map_err(req_err)?;
+            let new_client = Client::with_defaults()?;
             *client = new_client;
         }
 
@@ -520,8 +496,7 @@ where
                     asset_idx: 0,
                 },
             )
-            .await
-            .map_err(req_err)?;
+            .await?;
 
         Ok(response)
     }
@@ -574,15 +549,13 @@ where
             if current_game == 0 {
                 let launch_response = client
                     .send_https::<LaunchEndpoint>(client_info, &https_address, &request)
-                    .await
-                    .map_err(req_err)?;
+                    .await?;
 
                 launch_response.rtsp_session_url
             } else {
                 let resume_response = client
                     .send_https::<ResumeEndpoint>(client_info, &https_address, &request)
-                    .await
-                    .map_err(req_err)?;
+                    .await?;
 
                 resume_response.rtsp_session_url
             }
@@ -621,8 +594,7 @@ where
 
             client
                 .send_https::<CancelEndpoint>(client_info, &https_hostport, &CancelRequest {})
-                .await
-                .map_err(req_err)?
+                .await?
         };
 
         if !response.cancelled {

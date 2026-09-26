@@ -2,36 +2,23 @@
 
 use std::str::FromStr;
 
-use thiserror::Error;
 use tracing::warn;
 
 use crate::{
     ServerVersion,
-    error::MoonlightError,
+    error::{MoonlightError, parse_u32},
     stream::proto::{
         packet::{SUNSHINE_PING_PAYLOAD_SIZE, SunshinePing},
         rtsp::raw::{
             RtspAddr, RtspCommand, RtspProtocol, RtspRequest, RtspRequestMessage, RtspResponse,
         },
-        sdp::{ParseSdpError, Sdp, client::ClientSdp, server::ServerSdp},
+        sdp::{Sdp, client::ClientSdp, server::ServerSdp},
     },
 };
 
 const ERROR_CONTEXT: &str = "rtsp";
 
 pub const DEFAULT_AUDIO_PORT: u16 = 48000;
-
-#[derive(Debug, Error)]
-pub enum ParseMoonlightRtspResponseError {
-    #[error("no payload")]
-    NoPayload,
-    #[error("sdp error: {0}")]
-    Sdp(#[from] ParseSdpError),
-    #[error(
-        "missing session id, this happens after a stream(e.g. audio/video/control) was setup but no session id was returned by the server"
-    )]
-    MissingSessionId,
-}
 
 pub struct RtspOptionsRequest {
     pub target: RtspAddr,
@@ -387,15 +374,7 @@ impl RtspSetupControlResponse {
             .iter()
             .find(|(key, _)| key == "X-SS-Connect-Data")
         {
-            sunshine_connect_data =
-                Some(
-                    value
-                        .parse()
-                        .map_err(|_| MoonlightError::MissingAttribute {
-                            context: ERROR_CONTEXT,
-                            attribute: "X-SS-Connect-Data",
-                        })?,
-                );
+            sunshine_connect_data = Some(parse_u32(ERROR_CONTEXT, "X-SS-Connect-Data", value)?);
         }
 
         Ok(Self {

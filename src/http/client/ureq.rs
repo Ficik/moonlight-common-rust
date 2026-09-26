@@ -12,8 +12,7 @@ use ureq::{
 use crate::http::{
     ClientInfo, Endpoint, ParseError, TextResponse,
     client::{
-        DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, RequestError, blocking_client::RequestClient,
-        hyperlike::build_url,
+        DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, blocking_client::RequestClient, hyperlike::build_url,
     },
 };
 

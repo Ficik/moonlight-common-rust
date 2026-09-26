@@ -1,4 +1,8 @@
-use std::ffi::NulError;
+use std::{
+    ffi::NulError,
+    io,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 
 use thiserror::Error;
 
@@ -18,8 +22,12 @@ pub enum MoonlightError {
     #[error("4k not supported: Update GeForce Experience")]
     Setting4kNotSupportedUpdateGfe,
     // -- HTTP / HTTPS request and responses
-    #[error("the host is offline")]
-    HostOffline,
+    #[error(
+        "the https client doesn't have the required credentials, set them before making a request that requires authentication"
+    )]
+    Unauthenticated,
+    #[error("couldn't establish a connection")]
+    ConnectionTimeout,
     #[error("the host returned an unsuccessful status code({code}): {reason}")]
     StatusCode { code: i32, reason: String },
     // -- Pairing
@@ -49,13 +57,10 @@ pub enum MoonlightError {
     StringNulError(#[from] NulError),
     #[error("couldn't establish a connection")]
     ConnectionFailed,
-    // -- Moonlight Proto (custom rust impl)
-    #[error("couldn't establish a connection")]
-    ConnectionTimeout,
     // -- Crypto
     #[error("failed to decrypt data: {0}")]
     DecryptFailed(&'static str),
-    // --- WebRTC ---
+    // --- Parsing ---
     #[error("session parse")]
     Session(#[from] sdp_types::ParserError),
     #[error("{context}: missing required attribute {attribute:?}")]
@@ -63,10 +68,16 @@ pub enum MoonlightError {
         context: &'static str,
         attribute: &'static str,
     },
-    #[error("{context}: invalid attribute for {attribute:?}: got {got:?}, expected: {expected}")]
+    #[error("{context}: invalid attribute for {attribute:?}: got {got:?}, expected {expected}")]
     InvalidAttribute {
         context: &'static str,
         attribute: &'static str,
+        expected: &'static str,
+        got: String,
+    },
+    #[error("{context}: failed to parse value: got {got:?}, expected {expected}")]
+    InvalidValue {
+        context: &'static str,
         expected: &'static str,
         got: String,
     },
@@ -79,20 +90,60 @@ pub enum MoonlightError {
     #[error("invalid link header")]
     InvalidLinkHeader,
     // --- Other ---
+    #[error("io: {0}")]
+    Io(#[from] io::Error),
     #[error("other: {0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
+fn parse_error(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    expected: &'static str,
+    value: String,
+) -> MoonlightError {
+    if let Some(attribute) = attribute.into() {
+        MoonlightError::InvalidAttribute {
+            context,
+            attribute,
+            expected,
+            got: value,
+        }
+    } else {
+        MoonlightError::InvalidValue {
+            context,
+            expected,
+            got: value,
+        }
+    }
+}
+
 pub(crate) fn parse_u32(
     context: &'static str,
-    attribute: &'static str,
+    attribute: impl Into<Option<&'static str>>,
     value: &str,
 ) -> Result<u32, MoonlightError> {
-    value.parse().map_err(|_| MoonlightError::InvalidAttribute {
-        context,
-        attribute,
-        expected: "a valid positive number or 0 (u32)",
-        got: value.to_string(),
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid positive number or 0 (u32)",
+            value.to_string(),
+        )
+    })
+}
+pub(crate) fn parse_u16(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<u16, MoonlightError> {
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid positive number or 0 (u16)",
+            value.to_string(),
+        )
     })
 }
 
@@ -111,4 +162,34 @@ pub(crate) fn parse_number_as_bool(
             got: value.to_string(),
         }),
     }
+}
+
+pub(crate) fn parse_ipv4(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<Ipv4Addr, MoonlightError> {
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid ipv4 address",
+            value.to_string(),
+        )
+    })
+}
+
+pub(crate) fn parse_ipv6(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<Ipv6Addr, MoonlightError> {
+    value.parse().map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid ipv6 address",
+            value.to_string(),
+        )
+    })
 }
