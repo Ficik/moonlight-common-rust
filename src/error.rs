@@ -9,7 +9,9 @@ use pem::Pem;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{ServerVersion, mac::MacAddress, stream::proto::control::peer::PacketSendError};
+use crate::{
+    ServerState, ServerVersion, mac::MacAddress, stream::proto::control::peer::PacketSendError,
+};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -263,4 +265,19 @@ pub(crate) fn parse_pem(
 ) -> Result<Pem, MoonlightError> {
     Pem::from_str(value)
         .map_err(|_| parse_error(context, attribute, "a valid pem string", value.to_string()))
+}
+
+pub(crate) fn parse_server_state(
+    context: &'static str,
+    attribute: impl Into<Option<&'static str>>,
+    value: &str,
+) -> Result<ServerState, MoonlightError> {
+    ServerState::from_str(value).map_err(|_| {
+        parse_error(
+            context,
+            attribute,
+            "a valid server state",
+            value.to_string(),
+        )
+    })
 }

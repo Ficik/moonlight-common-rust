@@ -8,7 +8,7 @@ use pem::Pem;
 use thiserror::Error;
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::error::MoonlightError;
+use crate::error::{MoonlightError, parse_uuid};
 
 impl From<roxmltree::Error> for MoonlightError {
     fn from(value: roxmltree::Error) -> Self {
@@ -190,10 +190,12 @@ impl Request for ClientInfo {
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: client info";
+
         let unique_id = query_map.get("uniqueid")?;
 
         let uuid_str = query_map.get("uuid")?;
-        let uuid = Uuid::from_str(&uuid_str)?;
+        let uuid = parse_uuid(ERROR_CONTEXT, "uuid", &uuid_str)?;
 
         Ok(Self {
             unique_id: unique_id.into_owned(),

@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::{
     ServerState, ServerType, ServerVersion,
     error::{
-        MoonlightError, parse_ipv4, parse_mac, parse_number_as_bool, parse_server_version,
-        parse_u16, parse_u32, parse_uuid,
+        MoonlightError, parse_ipv4, parse_mac, parse_number_as_bool, parse_server_state,
+        parse_server_version, parse_u16, parse_u32, parse_uuid,
     },
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
@@ -416,7 +416,7 @@ impl FromStr for ServerInfoResponse {
                 parse_xml_child_text(root, "currentgame")?,
             )?,
             // TODO: moonshine can be detected like that: https://github.com/hgaiser/moonshine/blob/91602b5bcfed0a5189d97ed3e8ca6bf6bcae0ca0/moonshine-core/src/webserver/mod.rs#L591-L596
-            state: ServerState::from_str(&state_string)?,
+            state: parse_server_state(ERROR_CONTEXT, "state", &state_string)?,
             apollo_permissions,
             apollo_game_uuid,
             foundation_app_list_etag,

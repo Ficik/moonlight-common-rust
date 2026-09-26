@@ -7,7 +7,7 @@ use roxmltree::Document;
 
 use crate::{
     AppId,
-    error::{MoonlightError, parse_u32},
+    error::{MoonlightError, parse_error, parse_i32, parse_number_as_bool, parse_u32},
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{
@@ -16,8 +16,6 @@ use crate::{
     },
     stream::{AesIv, AesKey, audio::AudioConfig},
 };
-
-const ERROR_CONTEXT: &str = "http xml: launch";
 
 /// Launches a new session.
 ///
@@ -201,35 +199,62 @@ impl Request for ClientStreamRequest {
     where
         Q: QueryMap,
     {
-        let app_id = query_map.get("appid")?.parse().map(AppId)?;
+        const ERROR_CONTEXT: &str = "http query: launch";
+
+        let app_id = parse_u32(ERROR_CONTEXT, "appid", &query_map.get("appid")?).map(AppId)?;
 
         let mode = query_map.get("mode")?;
         let mut mode_split = mode.split("x");
-        let mode_width: u32 = mode_split
-            .next()
-            .ok_or(FromQueryError::Other(
-                "Missing width in \"mode\"".to_string(),
-            ))?
-            .parse()?;
-        let mode_height: u32 = mode_split
-            .next()
-            .ok_or(FromQueryError::Other(
-                "Missing height in \"mode\"".to_string(),
-            ))?
-            .parse()?;
-        let mode_fps: u32 = mode_split
-            .next()
-            .ok_or(FromQueryError::Other("Missing fps in \"mode\"".to_string()))?
-            .parse()?;
+        let mode_width: u32 = parse_u32(
+            ERROR_CONTEXT,
+            "mode.width",
+            mode_split
+                .next()
+                .ok_or_else(|| MoonlightError::InvalidValue {
+                    context: ERROR_CONTEXT,
+                    expected: "WIDTHxHEIGHTxFPS",
+                    got: mode.to_string(),
+                })?,
+        )?;
+        let mode_height: u32 = parse_u32(
+            ERROR_CONTEXT,
+            "mode.height",
+            mode_split
+                .next()
+                .ok_or_else(|| MoonlightError::InvalidValue {
+                    context: ERROR_CONTEXT,
+                    expected: "WIDTHxHEIGHTxFPS",
+                    got: mode.to_string(),
+                })?,
+        )?;
+        let mode_fps: u32 = parse_u32(
+            ERROR_CONTEXT,
+            "mode.fps",
+            mode_split
+                .next()
+                .ok_or_else(|| MoonlightError::InvalidValue {
+                    context: ERROR_CONTEXT,
+                    expected: "WIDTHxHEIGHTxFPS",
+                    got: mode.to_string(),
+                })?,
+        )?;
 
-        let sops = query_map.get("sops").unwrap_or("0".into()) != "0";
+        let sops = parse_number_as_bool(
+            ERROR_CONTEXT,
+            "sops",
+            &query_map.get("sops").unwrap_or("0".into()),
+        )?;
 
-        let hdr = query_map.get("hdrMode").unwrap_or("0".into()) != "0";
+        let hdr = parse_number_as_bool(
+            ERROR_CONTEXT,
+            "hdrMode",
+            &query_map.get("hdrMode").unwrap_or("0".into()),
+        )?;
 
         let surround_audio_info_raw = query_map
             .get("surroundAudioInfo")
             .ok()
-            .map(|x| x.parse())
+            .map(|x| parse_u32(ERROR_CONTEXT, "surroundAudioInfo", &x))
             .transpose()?
             .unwrap_or(AudioConfig::STEREO.to_surround_audio_info());
         let surround_audio_info = AudioConfig::from_surround_audio_info(surround_audio_info_raw);
@@ -238,25 +263,40 @@ impl Request for ClientStreamRequest {
             query_map.get("localAudioPlayMode").unwrap_or("1".into()) != "0";
 
         // TODO: what to trust?
-        let _gamepads_attached_mask: u32 = query_map
-            .get("remoteControllersBitmap")
-            .unwrap_or("0".into())
-            .parse()?;
-        let gamepads_attached_mask = query_map.get("gcmap").unwrap_or("0".into()).parse()?;
+        let _gamepads_attached_mask: u32 = parse_u32(
+            ERROR_CONTEXT,
+            "remoteControllersBitmap",
+            query_map
+                .get("remoteControllersBitmap")
+                .as_deref()
+                .unwrap_or("0"),
+        )?;
+        let gamepads_attached_mask = parse_i32(
+            ERROR_CONTEXT,
+            "gcmap",
+            query_map.get("gcmap").as_deref().unwrap_or("0"),
+        )?;
 
         let gamepads_persist_after_disconnect =
             query_map.get("gcpersist").unwrap_or("0".into()) != "0";
 
         let mut ri_key = [0u8; _];
         let ri_key_hex = query_map.get("rikey")?;
-        hex::decode_to_slice(ri_key_hex.as_bytes(), &mut ri_key)?;
+        hex::decode_to_slice(ri_key_hex.as_bytes(), &mut ri_key).map_err(|_| {
+            parse_error(
+                ERROR_CONTEXT,
+                "rikey",
+                "valid hex bytes that resolve to 16 bytes",
+                ri_key_hex.to_string(),
+            )
+        })?;
 
-        let ri_key_id: u32 = query_map.get("rikeyid")?.parse()?;
+        let ri_key_id: u32 = parse_u32(ERROR_CONTEXT, "rikeyid", &query_map.get("rikeyid")?)?;
 
         let core_version: Option<u32> = query_map
             .get("corever")
             .ok()
-            .map(|x| x.parse())
+            .map(|x| parse_u32(ERROR_CONTEXT, "corever", &x))
             .transpose()?;
 
         Ok(Self {
@@ -318,6 +358,8 @@ impl FromStr for LaunchResponse {
     type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: launch";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
