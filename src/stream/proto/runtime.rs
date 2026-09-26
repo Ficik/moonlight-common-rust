@@ -2,9 +2,9 @@ use std::net::SocketAddr;
 
 use sans_io_time::Instant;
 
-pub trait UdpStream: Send + Sync {
-    type Error;
+use crate::error::MoonlightError;
 
+pub trait UdpStream: Send + Sync {
     type Event;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])>;
@@ -19,9 +19,9 @@ pub trait UdpStream: Send + Sync {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), Self::Error>;
+    ) -> Result<(), MoonlightError>;
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), Self::Error>;
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError>;
 
     /// Allows for setting an os hint for the receive buffer size of the udp socket.
     fn recv_buffer_hint(&self) -> Option<usize> {

@@ -13,8 +13,9 @@ use tokio::{
     time::{Instant, Sleep, sleep_until},
 };
 
-use crate::stream::{
-    proto::runtime::UdpStream, sockets::new_udp_socket, tokio::MoonlightStreamError,
+use crate::{
+    error::MoonlightError,
+    stream::{proto::runtime::UdpStream, sockets::new_udp_socket},
 };
 
 pub struct StreamDriver<Stream> {
@@ -28,7 +29,7 @@ impl<Stream> StreamDriver<Stream>
 where
     Stream: UdpStream,
 {
-    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, MoonlightStreamError> {
+    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, MoonlightError> {
         let socket = new_udp_socket(false, stream.recv_buffer_hint())?;
 
         socket.set_nonblocking(true)?;
@@ -76,9 +77,8 @@ pin_project! {
 impl<'a, Stream> Future for DriveFuture<'a, Stream>
 where
     Stream: UdpStream,
-    MoonlightStreamError: From<Stream::Error>,
 {
-    type Output = Result<Stream::Event, MoonlightStreamError>;
+    type Output = Result<Stream::Event, MoonlightError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
@@ -177,14 +177,17 @@ where
 #[cfg(test)]
 mod tests {
     use sans_io_time::Instant as SansInstant;
-    use std::{collections::VecDeque, convert::Infallible, net::SocketAddr, time::Duration};
+    use std::{collections::VecDeque, net::SocketAddr, time::Duration};
     use tokio::{
         net::UdpSocket,
         select, spawn,
         time::{Instant, sleep},
     };
 
-    use crate::stream::{proto::runtime::UdpStream, tokio::driver::StreamDriver};
+    use crate::{
+        error::MoonlightError,
+        stream::{proto::runtime::UdpStream, tokio::driver::StreamDriver},
+    };
 
     enum TestEvent {
         Timeout(SansInstant),
@@ -202,8 +205,6 @@ mod tests {
         timeout: Option<SansInstant>,
     }
     impl UdpStream for TestStream {
-        type Error = Infallible;
-
         type Event = TestEvent;
 
         fn consume_send(&mut self) {
@@ -227,7 +228,7 @@ mod tests {
             now: SansInstant,
             addr: SocketAddr,
             data: &[u8],
-        ) -> Result<(), Self::Error> {
+        ) -> Result<(), MoonlightError> {
             self.event_list.push_back(TestEvent::Receive {
                 now,
                 addr,
@@ -235,7 +236,7 @@ mod tests {
             });
             Ok(())
         }
-        fn handle_timeout(&mut self, now: SansInstant) -> Result<(), Self::Error> {
+        fn handle_timeout(&mut self, now: SansInstant) -> Result<(), MoonlightError> {
             self.event_list.push_back(TestEvent::Timeout(now));
             Ok(())
         }
