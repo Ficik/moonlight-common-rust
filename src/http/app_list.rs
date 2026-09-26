@@ -4,8 +4,9 @@ use roxmltree::Document;
 
 use crate::{
     App, AppId,
+    error::MoonlightError,
     http::{
-        Endpoint, ParseError, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
     },
 };
@@ -35,7 +36,7 @@ impl Request for AppListRequest {
     ) -> Result<(), QueryBuilderError> {
         Ok(())
     }
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, super::FromQueryError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -83,7 +84,7 @@ impl TextResponse for AppListResponse {
 }
 
 impl FromStr for AppListResponse {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;

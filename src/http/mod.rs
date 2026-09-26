@@ -1,53 +1,22 @@
 use std::{
     borrow::Cow,
     fmt::{self, Debug},
-    net::AddrParseError,
-    num::ParseIntError,
-    str::{FromStr, Utf8Error},
-    string::FromUtf8Error,
+    str::FromStr,
 };
 
 use pem::Pem;
-use roxmltree::Error;
 use thiserror::Error;
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::{ParseServerStateError, ParseServerVersionError, mac::ParseMacError};
+use crate::error::MoonlightError;
 
-// TODO: remove this error
-#[derive(Debug, Error, PartialEq)]
-pub enum ParseError {
-    #[error("the response is invalid xml")]
-    ParseXmlError(#[from] Error),
-    #[error("the returned xml doc has a non 200 status code")]
-    InvalidXmlStatusCode { message: Option<String> },
-    #[error("the returned xml doc doesn't have the root node")]
-    XmlRootNotFound,
-    #[error("the text contents of an xml node aren't present: {0}")]
-    XmlTextNotFound(&'static str),
-    #[error("detail was not found: {0}")]
-    DetailNotFound(&'static str),
-    #[error("{0}")]
-    ParseServerStateError(#[from] ParseServerStateError),
-    #[error("{0}")]
-    ParseServerVersionError(#[from] ParseServerVersionError),
-    #[error("parsing server codec mode support")]
-    ParseServerCodecModeSupport,
-    #[error("mac: {0}")]
-    ParseMacError(#[from] ParseMacError),
-    #[error("int: {0}")]
-    ParseIntError(#[from] ParseIntError),
-    #[error("uuid: {0}")]
-    ParseUuidError(#[from] uuid::Error),
-    #[error("hex: {0}")]
-    ParseHexError(#[from] hex::FromHexError),
-    #[error("addr: {0}")]
-    ParseAddrError(#[from] AddrParseError),
-    #[error("pem: {0}")]
-    ParsePem(#[from] pem::PemError),
-    #[error("utf-8: {0}")]
-    Utf8Error(#[from] FromUtf8Error),
+impl From<roxmltree::Error> for MoonlightError {
+    fn from(value: roxmltree::Error) -> Self {
+        Self::Other(value.into())
+    }
 }
+
+const ERROR_CONTEXT: &str = "http xml";
 
 pub mod app_list;
 pub mod box_art;
@@ -102,33 +71,15 @@ impl QueryBuilder for String {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum FromQueryError {
-    #[error("query param \"{0}\" not found")]
-    QueryParamNotFound(String),
-    #[error("int: {0}")]
-    Int(#[from] ParseIntError),
-    #[error("uuid: {0}")]
-    Uuid(#[from] uuid::Error),
-    #[error("hex: {0}")]
-    Hex(#[from] hex::FromHexError),
-    #[error("pem: {0}")]
-    Pem(#[from] pem::PemError),
-    #[error("utf8: {0}")]
-    Utf8(#[from] Utf8Error),
-    #[error("other: {0}")]
-    Other(String),
-}
-
 pub trait QueryMap {
     fn has(&self, param: &str) -> bool;
-    fn get<'a>(&'a self, param: &str) -> Result<Cow<'a, str>, FromQueryError>;
+    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, MoonlightError>;
 }
 
 impl QueryMap for &str {
     // TODO: handle %20 and so on
 
-    fn get<'b>(&'b self, param: &str) -> Result<Cow<'b, str>, FromQueryError> {
+    fn get<'b>(&'b self, param: &'static str) -> Result<Cow<'b, str>, MoonlightError> {
         for pair in self.split('&') {
             let mut parts = pair.splitn(2, '=');
             let key = parts.next().unwrap_or("");
@@ -137,7 +88,10 @@ impl QueryMap for &str {
                 return Ok(Cow::Borrowed(value));
             }
         }
-        Err(FromQueryError::QueryParamNotFound(param.to_string()))
+        Err(MoonlightError::MissingAttribute {
+            context: "query parameter",
+            attribute: param,
+        })
     }
 
     fn has(&self, param: &str) -> bool {
@@ -181,15 +135,13 @@ pub trait Request: Sized {
         query_builder: &mut impl QueryBuilder,
     ) -> Result<(), QueryBuilderError>;
 
-    // TODO: maybe don't use an iterator, but some kind of map like interface?
-    // TODO: error?
     /// Parse the query parameters of into this request type.
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap;
 }
 
-pub trait TextResponse: FromStr + Debug {
+pub trait TextResponse: FromStr<Err = MoonlightError> + Debug {
     fn serialize_into(&self, body_writer: &mut impl fmt::Write) -> fmt::Result;
 }
 
@@ -236,7 +188,7 @@ impl Request for ClientInfo {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {

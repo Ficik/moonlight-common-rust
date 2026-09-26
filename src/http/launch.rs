@@ -7,9 +7,9 @@ use roxmltree::Document;
 
 use crate::{
     AppId,
+    error::MoonlightError,
     http::{
-        Endpoint, FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap,
-        QueryParam, Request, TextResponse,
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{
             fmt_write_to_buffer, i32_to_str, parse_xml_child_text, parse_xml_root_node, u32_to_str,
         },
@@ -195,7 +195,7 @@ impl Request for ClientStreamRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -313,7 +313,7 @@ impl TextResponse for LaunchResponse {
 }
 
 impl FromStr for LaunchResponse {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;
@@ -321,7 +321,7 @@ impl FromStr for LaunchResponse {
 
         let rtsp_session_url = match parse_xml_child_text(root, "sessionUrl0") {
             Ok(value) => Some(value.to_string()),
-            Err(ParseError::DetailNotFound(_)) => None,
+            Err(MoonlightError::MissingAttribute { .. }) => None,
             Err(err) => {
                 return Err(err);
             }

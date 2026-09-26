@@ -2,11 +2,13 @@ use std::{fmt, str::FromStr};
 
 use roxmltree::Document;
 
-use crate::http::{
-    FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
-    TextResponse,
-    helper::{parse_xml_child_text, parse_xml_root_node},
-    pair::parse_xml_child_paired,
+use crate::{
+    error::MoonlightError,
+    http::{
+        QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        pair::parse_xml_child_paired,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,7 +40,7 @@ impl Request for PairPhase3Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -91,7 +93,7 @@ impl TextResponse for PairPhase3Response {
 }
 
 impl FromStr for PairPhase3Response {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;

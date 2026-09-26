@@ -3,11 +3,13 @@ use std::{fmt, str::FromStr};
 use pem::Pem;
 use roxmltree::Document;
 
-use crate::http::{
-    FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
-    TextResponse,
-    helper::{parse_xml_child_text, parse_xml_root_node},
-    pair::{SALT_LENGTH, parse_xml_child_paired},
+use crate::{
+    error::MoonlightError,
+    http::{
+        QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        pair::{SALT_LENGTH, parse_xml_child_paired},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +54,7 @@ impl Request for PairPhase1Request {
     }
 
     /// It is expected that "phrase"="getservercert"
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -112,7 +114,7 @@ impl TextResponse for PairPhase1Response {
 }
 
 impl FromStr for PairPhase1Response {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;
@@ -128,7 +130,7 @@ impl FromStr for PairPhase1Response {
                 let pem = Pem::from_str(&str)?;
                 Some(pem)
             }
-            Err(ParseError::DetailNotFound("plaincert")) => None,
+            Err(MoonlightError::MissingAttribute { .. }) => None,
             Err(err) => return Err(err),
         };
 

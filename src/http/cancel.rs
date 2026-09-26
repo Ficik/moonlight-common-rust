@@ -3,9 +3,12 @@ use std::str::FromStr;
 
 use roxmltree::Document;
 
-use crate::http::{
-    Endpoint, FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, Request,
-    TextResponse, helper::parse_xml_child_text,
+use crate::{
+    error::MoonlightError,
+    http::{
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+    },
 };
 
 pub struct CancelEndpoint;
@@ -34,7 +37,7 @@ impl Request for CancelRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -58,15 +61,11 @@ impl TextResponse for CancelResponse {
 }
 
 impl FromStr for CancelResponse {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;
-        let root = doc
-            .root()
-            .children()
-            .find(|node| node.tag_name().name() == "root")
-            .ok_or(ParseError::XmlRootNotFound)?;
+        let root = parse_xml_root_node(&doc)?;
 
         let cancel = parse_xml_child_text(root, "cancel")?.trim();
 

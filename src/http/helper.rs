@@ -3,40 +3,58 @@ use std::fmt::Write as _;
 
 use roxmltree::{Document, Node};
 
-use crate::http::ParseError;
+use crate::{error::MoonlightError, http::ERROR_CONTEXT};
 
 pub fn parse_xml_child_text<'doc, 'node>(
     list_node: Node<'node, 'doc>,
     name: &'static str,
-) -> Result<&'node str, ParseError>
+) -> Result<&'node str, MoonlightError>
 where
     'node: 'doc,
 {
     let node = list_node
         .children()
         .find(|node| node.tag_name().name() == name)
-        .ok_or(ParseError::DetailNotFound(name))?;
-    let content = node.text().ok_or(ParseError::XmlTextNotFound(name))?;
+        .ok_or(MoonlightError::MissingAttribute {
+            context: ERROR_CONTEXT,
+            attribute: name,
+        })?;
+    let content = node.text().ok_or(MoonlightError::InvalidValue {
+        context: ERROR_CONTEXT,
+        expected: "a text node",
+        got: format!("{}", node),
+    })?;
 
     Ok(content)
 }
 
-pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, ParseError> {
+pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, MoonlightError> {
     let root = doc
         .root()
         .children()
         .find(|node| node.tag_name().name() == "root")
-        .ok_or(ParseError::XmlRootNotFound)?;
+        .ok_or(MoonlightError::InvalidValue {
+            context: ERROR_CONTEXT,
+            expected: "a xml root element",
+            got: format!("{}", doc),
+        })?;
 
     // Important: status code can be negative
     let status_code = root
         .attribute("status_code")
-        .ok_or(ParseError::DetailNotFound("status_code"))?
+        .ok_or(MoonlightError::MissingAttribute {
+            context: ERROR_CONTEXT,
+            attribute: "status_code",
+        })?
         .parse::<i32>()?;
 
     if status_code / 100 != 2 {
-        return Err(ParseError::InvalidXmlStatusCode {
-            message: root.attribute("status_message").map(str::to_string),
+        return Err(MoonlightError::StatusCode {
+            code: status_code,
+            reason: root
+                .attribute("status_message")
+                .map(str::to_string)
+                .unwrap_or_default(),
         });
     }
 

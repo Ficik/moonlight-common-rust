@@ -2,7 +2,7 @@ use pem::Pem;
 
 use crate::{
     error::MoonlightError,
-    http::{ClientInfo, Endpoint, ParseError, TextResponse},
+    http::{ClientInfo, Endpoint, TextResponse},
 };
 
 ///
@@ -26,7 +26,7 @@ pub trait RequestClient: Sized + Clone {
     ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint,
-        E::Response: TextResponse<Err = ParseError>;
+        E::Response: TextResponse;
 
     fn send_https<E>(
         &self,
@@ -36,7 +36,7 @@ pub trait RequestClient: Sized + Clone {
     ) -> Result<E::Response, MoonlightError>
     where
         E: Endpoint,
-        E::Response: TextResponse<Err = ParseError>;
+        E::Response: TextResponse;
 
     fn send_https_with_bytes<E>(
         &self,

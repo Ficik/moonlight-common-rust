@@ -16,8 +16,8 @@ use crate::{
     ServerVersion,
     error::MoonlightError,
     http::{
-        ClientIdentifier, ClientSecret, Endpoint, FromQueryError, ParseError, QueryBuilder,
-        QueryBuilderError, QueryMap, Request, ServerIdentifier, TextResponse,
+        ClientIdentifier, ClientSecret, ERROR_CONTEXT, Endpoint, QueryBuilder, QueryBuilderError,
+        QueryMap, Request, ServerIdentifier, TextResponse,
         helper::parse_xml_child_text,
         pair::{
             phase1::{PairPhase1Request, PairPhase1Response},
@@ -170,7 +170,7 @@ impl Request for PairRequest {
         }
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
     where
         Q: QueryMap,
     {
@@ -188,9 +188,11 @@ impl Request for PairRequest {
         } else if phrase == Some("pairchallenge") {
             PairPhase5Request::from_query_params(query_map).map(Self::Phase5)
         } else {
-            Err(FromQueryError::Other(
-                "Couldn't detect correct pairing stage!".to_string(),
-            ))
+            Err(MoonlightError::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "any important attribute that relates to the pairing stage",
+                got: format!("none"),
+            })
         }
     }
 }
@@ -216,7 +218,7 @@ impl TextResponse for PairResponse {
 }
 
 impl FromStr for PairResponse {
-    type Err = ParseError;
+    type Err = MoonlightError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.contains("plaincert") {
@@ -231,7 +233,9 @@ impl FromStr for PairResponse {
     }
 }
 
-fn parse_xml_child_paired<'doc, 'node>(list_node: Node<'node, 'doc>) -> Result<bool, ParseError> {
+fn parse_xml_child_paired<'doc, 'node>(
+    list_node: Node<'node, 'doc>,
+) -> Result<bool, MoonlightError> {
     let paired: i32 = parse_xml_child_text(list_node, "paired")?.parse()?;
     Ok(paired == 1)
 }
