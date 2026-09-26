@@ -524,8 +524,6 @@ impl ControlHost {
 }
 
 impl UdpStream for ControlHost {
-    type Error = MoonlightError;
-
     type Event = ControlHostEvent;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {

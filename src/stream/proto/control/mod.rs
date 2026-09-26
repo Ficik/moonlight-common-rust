@@ -429,8 +429,6 @@ impl Debug for ControlStream {
 }
 
 impl UdpStream for ControlStream {
-    type Error = MoonlightError;
-
     type Event = ControlStreamEvent;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
@@ -464,7 +462,7 @@ impl UdpStream for ControlStream {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         if self.addr != addr {
             trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
             return Ok(());
@@ -477,7 +475,7 @@ impl UdpStream for ControlStream {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), Self::Error> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
         self.host.handle_timeout(now)?;
 
         self.do_update(now)?;

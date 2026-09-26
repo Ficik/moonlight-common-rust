@@ -269,8 +269,6 @@ impl Drop for VideoStream {
 }
 
 impl UdpStream for VideoStream {
-    type Error = MoonlightError;
-
     type Event = VideoStreamEvent;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
@@ -288,7 +286,7 @@ impl UdpStream for VideoStream {
         self.events.pop_front()
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), Self::Error> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);
@@ -302,7 +300,7 @@ impl UdpStream for VideoStream {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);

@@ -90,8 +90,6 @@ impl FoundationMicStream {
 }
 
 impl UdpStream for FoundationMicStream {
-    type Error = MoonlightError;
-
     type Event = Infallible;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
@@ -120,11 +118,11 @@ impl UdpStream for FoundationMicStream {
         _now: Instant,
         _addr: SocketAddr,
         _data: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), MoonlightError> {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, _now: Instant) -> Result<(), Self::Error> {
+    fn handle_timeout(&mut self, _now: Instant) -> Result<(), MoonlightError> {
         Ok(())
     }
 }
