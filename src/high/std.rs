@@ -1,15 +1,14 @@
 use std::{
-    error::Error,
     io,
     net::{Ipv4Addr, SocketAddrV4, UdpSocket},
-    sync::{Mutex, PoisonError, RwLock},
+    sync::{Mutex, RwLock},
 };
 
 use uuid::Uuid;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
-    high::MoonlightClientError,
+    error::MoonlightError,
     http::{
         ClientIdentifier, ClientInfo, ClientSecret, DEFAULT_UNIQUE_ID, ServerIdentifier,
         app_list::{AppListEndpoint, AppListRequest, AppListResponse},
@@ -33,10 +32,6 @@ use crate::{
         video::ServerCodecModeSupport,
     },
 };
-
-fn poison_err<T>(_err: PoisonError<T>) -> MoonlightClientError {
-    MoonlightClientError::Poisoned(PoisonError::new(()))
-}
 
 pub fn broadcast_magic_packet(mac: MacAddress) -> Result<(), io::Error> {
     let mut magic_packet = [0u8; 6 * 17];
@@ -78,32 +73,18 @@ struct Authenticated {
     server_identifier: ServerIdentifier,
 }
 
-fn req_err<Err>(err: Err) -> MoonlightClientError
-where
-    Err: Error + Send + Sync + 'static,
-{
-    MoonlightClientError::Backend(Box::new(err))
-}
-fn crypto_err<Err>(err: ClientPairingError<Err>) -> MoonlightClientError
-where
-    Err: Error + Send + Sync + 'static,
-{
-    MoonlightClientError::Pairing(ClientPairingError::from_err(err))
-}
-
 /// TODO: some docs
 impl<Client> MoonlightHost<Client>
 where
     Client: RequestClient,
-    <Client as RequestClient>::Error: Error + Send + Sync + 'static,
 {
     pub fn new(
         address: String,
         http_port: u16,
         unique_id: Option<String>,
-    ) -> Result<Self, MoonlightClientError> {
+    ) -> Result<Self, MoonlightError> {
         Ok(Self {
-            client: Mutex::new(Client::with_defaults().map_err(req_err)?),
+            client: Mutex::new(Client::with_defaults()?),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
             address,
             http_port,
@@ -122,9 +103,9 @@ where
         format!("{}:{}", self.address, self.http_port)
     }
 
-    pub fn update(self: &MoonlightHost<Client>) -> Result<(), MoonlightClientError> {
-        let mut cache_lock = self.cache.write().map_err(poison_err)?;
-        let client = self.client.lock().map_err(poison_err)?;
+    pub fn update(self: &MoonlightHost<Client>) -> Result<(), MoonlightError> {
+        let mut cache_lock = self.cache.write()?;
+        let client = self.client.lock()?;
 
         let client_info = ClientInfo {
             unique_id: self.client_unique_id.clone(),
@@ -132,13 +113,11 @@ where
         };
 
         let http_address = self.http_address();
-        let server_info = client
-            .send_http::<ServerInfoEndpoint>(
-                client_info.clone(),
-                &http_address,
-                &ServerInfoRequest {},
-            )
-            .map_err(req_err)?;
+        let server_info = client.send_http::<ServerInfoEndpoint>(
+            client_info.clone(),
+            &http_address,
+            &ServerInfoRequest {},
+        )?;
 
         let https_port = server_info.https_port;
         cache_lock.server_info = Some(server_info);
@@ -146,23 +125,19 @@ where
         if cache_lock.authenticated.is_some() {
             let https_address = Self::build_https_address(&self.address, https_port);
 
-            let server_info_secure = client
-                .send_https::<ServerInfoEndpoint>(
-                    client_info.clone(),
-                    &https_address,
-                    &ServerInfoRequest {},
-                )
-                .map_err(req_err)?;
+            let server_info_secure = client.send_https::<ServerInfoEndpoint>(
+                client_info.clone(),
+                &https_address,
+                &ServerInfoRequest {},
+            )?;
 
             cache_lock.server_info = Some(server_info_secure);
 
-            let app_list = client
-                .send_https::<AppListEndpoint>(
-                    client_info.clone(),
-                    &https_address,
-                    &AppListRequest {},
-                )
-                .map_err(req_err)?;
+            let app_list = client.send_https::<AppListEndpoint>(
+                client_info.clone(),
+                &https_address,
+                &AppListRequest {},
+            )?;
 
             cache_lock.app_list = Some(app_list);
         } else {
@@ -178,8 +153,8 @@ where
     fn server_info<R>(
         &self,
         f: impl FnOnce(&ServerInfoResponse) -> R,
-    ) -> Result<R, MoonlightClientError> {
-        let cache = self.cache.read().map_err(poison_err)?;
+    ) -> Result<R, MoonlightError> {
+        let cache = self.cache.read()?;
 
         if let Some(server_info) = &cache.server_info {
             Ok(f(server_info))
@@ -187,7 +162,7 @@ where
             drop(cache);
 
             self.update()?;
-            let response = self.cache.read().map_err(poison_err)?;
+            let response = self.cache.read()?;
             let Some(server_info) = &response.server_info else {
                 unreachable!()
             };
@@ -196,58 +171,56 @@ where
         }
     }
 
-    pub fn https_port(&self) -> Result<u16, MoonlightClientError> {
+    pub fn https_port(&self) -> Result<u16, MoonlightError> {
         self.server_info(|info| info.https_port)
     }
 
     fn build_https_address(address: &str, https_port: u16) -> String {
         format!("{address}:{https_port}")
     }
-    pub fn https_address(&self) -> Result<String, MoonlightClientError> {
+    pub fn https_address(&self) -> Result<String, MoonlightError> {
         let https_port = self.https_port()?;
         Ok(Self::build_https_address(&self.address, https_port))
     }
-    pub fn external_port(&self) -> Result<Option<u16>, MoonlightClientError> {
+    pub fn external_port(&self) -> Result<Option<u16>, MoonlightError> {
         self.server_info(|info| info.external_port)
     }
 
-    pub fn host_name(&self) -> Result<String, MoonlightClientError> {
+    pub fn host_name(&self) -> Result<String, MoonlightError> {
         self.server_info(|info| info.host_name.clone())
     }
-    pub fn version(&self) -> Result<ServerVersion, MoonlightClientError> {
+    pub fn version(&self) -> Result<ServerVersion, MoonlightError> {
         self.server_info(|info| info.app_version)
     }
 
-    pub fn gfe_version(&self) -> Result<String, MoonlightClientError> {
+    pub fn gfe_version(&self) -> Result<String, MoonlightError> {
         self.server_info(|info| info.gfe_version.clone())
     }
-    pub fn unique_id(&self) -> Result<Uuid, MoonlightClientError> {
+    pub fn unique_id(&self) -> Result<Uuid, MoonlightError> {
         self.server_info(|info| info.unique_id)
     }
 
     /// Returns None if unpaired
-    pub fn mac(&self) -> Result<Option<MacAddress>, MoonlightClientError> {
+    pub fn mac(&self) -> Result<Option<MacAddress>, MoonlightError> {
         self.server_info(|info| info.mac)
     }
-    pub fn local_ip(&self) -> Result<Ipv4Addr, MoonlightClientError> {
+    pub fn local_ip(&self) -> Result<Ipv4Addr, MoonlightError> {
         self.server_info(|info| info.local_ip)
     }
 
-    pub fn current_game(&self) -> Result<u32, MoonlightClientError> {
+    pub fn current_game(&self) -> Result<u32, MoonlightError> {
         self.server_info(|info| info.current_game)
     }
 
-    pub fn state(&self) -> Result<ServerState, MoonlightClientError> {
+    pub fn state(&self) -> Result<ServerState, MoonlightError> {
         self.server_info(|info| info.state)
     }
 
-    pub fn max_luma_pixels_hevc(&self) -> Result<u32, MoonlightClientError> {
+    pub fn max_luma_pixels_hevc(&self) -> Result<u32, MoonlightError> {
         self.server_info(|info| info.max_luma_pixels_hevc)
     }
 
-    pub fn server_codec_mode_support(
-        &self,
-    ) -> Result<ServerCodecModeSupport, MoonlightClientError> {
+    pub fn server_codec_mode_support(&self) -> Result<ServerCodecModeSupport, MoonlightError> {
         self.server_info(|info| info.server_codec_mode_support)
     }
 
@@ -256,19 +229,18 @@ where
         client_identifier: ClientIdentifier,
         client_secret: ClientSecret,
         server_identifier: ServerIdentifier,
-    ) -> Result<(), MoonlightClientError> {
+    ) -> Result<(), MoonlightError> {
         let client = Client::with_certificates(
             &client_secret.to_pem(),
             &client_identifier.to_pem(),
             &server_identifier.to_pem(),
-        )
-        .map_err(req_err)?;
+        )?;
 
         {
-            let mut client_lock = self.client.lock().map_err(poison_err)?;
+            let mut client_lock = self.client.lock()?;
             *client_lock = client;
 
-            let mut cache = self.cache.write().map_err(poison_err)?;
+            let mut cache = self.cache.write()?;
 
             cache.authenticated = Some(Authenticated {
                 client_identifier,
@@ -295,15 +267,15 @@ where
         })
     }
 
-    pub fn is_paired(&self) -> Result<bool, MoonlightClientError> {
-        let cache = self.cache.read().map_err(poison_err)?;
+    pub fn is_paired(&self) -> Result<bool, MoonlightError> {
+        let cache = self.cache.read()?;
         Ok(cache.authenticated.is_some())
     }
-    fn check_paired(&self) -> Result<(), MoonlightClientError> {
+    fn check_paired(&self) -> Result<(), MoonlightError> {
         if self.is_paired()? {
             Ok(())
         } else {
-            Err(MoonlightClientError::Unauthenticated)
+            Err(MoonlightError::Unauthenticated)
         }
     }
 
@@ -314,10 +286,9 @@ where
         device_name: String,
         pin: PairPin,
         crypto_provider: Crypto,
-    ) -> Result<(), MoonlightClientError>
+    ) -> Result<(), MoonlightError>
     where
         Crypto: PairingCryptoBackend,
-        Crypto::Error: Error + Send + Sync + 'static,
     {
         let http_address = self.http_address();
         let server_version = self.version()?;
@@ -328,7 +299,7 @@ where
             uuid: Uuid::new_v4(),
         };
 
-        let mut client = Client::with_defaults_long_timeout().map_err(req_err)?;
+        let mut client = Client::with_defaults_long_timeout()?;
 
         let mut pairing = ClientPairing::new(
             client_identifier.clone(),
@@ -337,8 +308,7 @@ where
             device_name,
             pin,
             crypto_provider,
-        )
-        .map_err(crypto_err)?;
+        )?;
 
         match self.pair_impl(
             &http_address,
@@ -364,12 +334,12 @@ where
 
         // Replace client
         {
-            let mut client_lock = self.client.lock().map_err(poison_err)?;
+            let mut client_lock = self.client.lock()?;
             *client_lock = client;
         }
 
         // Update our info
-        self.update().map_err(req_err)?;
+        self.update()?;
 
         Ok(())
     }
@@ -382,29 +352,29 @@ where
         client_info: ClientInfo,
         pairing: &mut ClientPairing<Crypto>,
         client: &mut Client,
-    ) -> Result<(), MoonlightClientError>
+    ) -> Result<(), MoonlightError>
     where
         Crypto: PairingCryptoBackend,
-        Crypto::Error: Error + Send + Sync + 'static,
     {
         let mut server_identifier = None;
 
         loop {
-            match pairing.poll_output().map_err(crypto_err)? {
+            match pairing.poll_output()? {
                 ClientPairingOutput::SendHttpPairRequest(request) => {
-                    let response = client
-                        .send_http::<PairEndpoint>(client_info.clone(), http_address, &request)
-                        .map_err(req_err)?;
+                    let response = client.send_http::<PairEndpoint>(
+                        client_info.clone(),
+                        http_address,
+                        &request,
+                    )?;
 
-                    pairing.handle_response(response).map_err(crypto_err)?;
+                    pairing.handle_response(response)?;
                 }
                 ClientPairingOutput::SetServerIdentifier(new_server_identifier) => {
                     *client = Client::with_certificates(
                         &client_secret.to_pem(),
                         &client_identifier.to_pem(),
                         &new_server_identifier.to_pem(),
-                    )
-                    .map_err(req_err)?;
+                    )?;
 
                     server_identifier = Some(new_server_identifier);
                 }
@@ -414,15 +384,17 @@ where
                         "ClientPairing didn't set ServerIdentifier but tried to make a https request"
                     );
 
-                    let response = client
-                        .send_https::<PairEndpoint>(client_info.clone(), https_address, &request)
-                        .map_err(req_err)?;
+                    let response = client.send_https::<PairEndpoint>(
+                        client_info.clone(),
+                        https_address,
+                        &request,
+                    )?;
 
-                    pairing.handle_response(response).map_err(crypto_err)?;
+                    pairing.handle_response(response)?;
                 }
                 ClientPairingOutput::Success => {
                     {
-                        let mut cache_lock = self.cache.write().map_err(poison_err)?;
+                        let mut cache_lock = self.cache.write()?;
                         cache_lock.authenticated = Some(Authenticated {
                             client_identifier: client_identifier.clone(),
                             client_secret: client_secret.clone(),
@@ -438,7 +410,7 @@ where
         }
     }
 
-    pub fn unpair(&self) -> Result<(), MoonlightClientError> {
+    pub fn unpair(&self) -> Result<(), MoonlightError> {
         self.check_paired()?;
 
         let https_address = self.https_address()?;
@@ -448,30 +420,28 @@ where
         };
 
         {
-            let mut client = self.client.lock().map_err(poison_err)?;
+            let mut client = self.client.lock()?;
 
-            client
-                .send_https::<UnpairEndpoint>(client_info, &https_address, &UnpairRequest {})
-                .map_err(req_err)?;
+            client.send_https::<UnpairEndpoint>(client_info, &https_address, &UnpairRequest {})?;
 
-            let new_client = Client::with_defaults().map_err(req_err)?;
+            let new_client = Client::with_defaults()?;
             *client = new_client;
         }
 
         Ok(())
     }
 
-    pub fn apollo_permissions(&self) -> Result<Option<ApolloPermissions>, MoonlightClientError> {
+    pub fn apollo_permissions(&self) -> Result<Option<ApolloPermissions>, MoonlightError> {
         self.check_paired()?;
 
         self.server_info(|info| info.apollo_permissions.clone())
     }
 
-    pub fn app_list(&self) -> Result<Vec<App>, MoonlightClientError> {
-        let cache = self.cache.read().map_err(poison_err)?;
+    pub fn app_list(&self) -> Result<Vec<App>, MoonlightError> {
+        let cache = self.cache.read()?;
 
         if cache.authenticated.is_none() {
-            return Err(MoonlightClientError::Unauthenticated);
+            return Err(MoonlightError::Unauthenticated);
         }
 
         if let Some(app_list) = &cache.app_list {
@@ -480,7 +450,7 @@ where
             drop(cache);
 
             self.update()?;
-            let cache = self.cache.read().map_err(poison_err)?;
+            let cache = self.cache.read()?;
             let Some(app_list) = &cache.app_list else {
                 unreachable!()
             };
@@ -489,7 +459,7 @@ where
         }
     }
 
-    pub fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, MoonlightClientError> {
+    pub fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, MoonlightError> {
         self.check_paired()?;
 
         let https_address = self.https_address()?;
@@ -499,18 +469,16 @@ where
             uuid: Uuid::new_v4(),
         };
 
-        let client = { self.client.lock().map_err(poison_err)?.clone() };
-        let response = client
-            .send_https_with_bytes::<AppBoxArtEndpoint>(
-                client_info,
-                &https_address,
-                &AppBoxArtRequest {
-                    app_id,
-                    asset_type: 2,
-                    asset_idx: 0,
-                },
-            )
-            .map_err(req_err)?;
+        let client = { self.client.lock()?.clone() };
+        let response = client.send_https_with_bytes::<AppBoxArtEndpoint>(
+            client_info,
+            &https_address,
+            &AppBoxArtRequest {
+                app_id,
+                asset_type: 2,
+                asset_idx: 0,
+            },
+        )?;
 
         Ok(response)
     }
@@ -526,7 +494,7 @@ where
         aes_key: AesKey,
         aes_iv: AesIv,
         launch_query_parameters: &str,
-    ) -> Result<MoonlightStreamConfig, MoonlightClientError> {
+    ) -> Result<MoonlightStreamConfig, MoonlightError> {
         // Clearing cache so we refresh and can see if there's a game -> launch or resume?
         self.update()?;
 
@@ -558,18 +526,16 @@ where
         };
 
         let rtsp_session_url = {
-            let client = self.client.lock().map_err(poison_err)?;
+            let client = self.client.lock()?;
 
             if current_game == 0 {
-                let launch_response = client
-                    .send_https::<LaunchEndpoint>(client_info, &https_address, &request)
-                    .map_err(req_err)?;
+                let launch_response =
+                    client.send_https::<LaunchEndpoint>(client_info, &https_address, &request)?;
 
                 launch_response.rtsp_session_url
             } else {
-                let resume_response = client
-                    .send_https::<ResumeEndpoint>(client_info, &https_address, &request)
-                    .map_err(req_err)?;
+                let resume_response =
+                    client.send_https::<ResumeEndpoint>(client_info, &https_address, &request)?;
 
                 resume_response.rtsp_session_url
             }
@@ -593,7 +559,7 @@ where
         })
     }
 
-    pub fn cancel(&mut self) -> Result<bool, MoonlightClientError> {
+    pub fn cancel(&mut self) -> Result<bool, MoonlightError> {
         self.check_paired()?;
 
         let https_hostport = self.https_address()?;
@@ -604,11 +570,9 @@ where
         };
 
         let response = {
-            let client = self.client.lock().map_err(poison_err)?;
+            let client = self.client.lock()?;
 
-            client
-                .send_https::<CancelEndpoint>(client_info, &https_hostport, &CancelRequest {})
-                .map_err(req_err)?
+            client.send_https::<CancelEndpoint>(client_info, &https_hostport, &CancelRequest {})?
         };
 
         if !response.cancelled {

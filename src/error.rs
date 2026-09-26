@@ -101,6 +101,16 @@ pub enum MoonlightError {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
+#[derive(Debug, Error)]
+#[error("poisoned lock: another task failed inside")]
+struct PoisonError;
+
+impl<T> From<std::sync::PoisonError<T>> for MoonlightError {
+    fn from(_value: std::sync::PoisonError<T>) -> Self {
+        Self::Other(PoisonError.into())
+    }
+}
+
 pub(crate) fn parse_error(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
