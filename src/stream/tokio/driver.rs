@@ -114,29 +114,26 @@ where
                 }
             }
 
-            // -- Read
-            let mut received = false;
-            loop {
-                let mut recv_buffer = ReadBuf::new(&mut this.driver.recv_buffer);
-
-                match this.driver.socket.poll_recv_from(cx, &mut recv_buffer) {
-                    Poll::Ready(Ok(addr)) => {
-                        received = true;
-
-                        this.driver.inner.handle_receive(
-                            SansInstant::from_std(this.driver.base_time.into_std()),
-                            addr,
-                            recv_buffer.filled(),
-                        )?;
-                        recv_buffer.clear();
-                    }
-                    Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
-                    Poll::Pending => break,
-                }
+            // Deliver queued events before another receive or timeout can fail
+            // after a server termination has already disconnected the peer.
+            if let Some(event) = this.driver.inner.poll_event() {
+                return Poll::Ready(Ok(event));
             }
-            if received {
-                // If data was received, we might have a new send
-                continue;
+
+            // -- Read
+            let mut recv_buffer = ReadBuf::new(&mut this.driver.recv_buffer);
+            match this.driver.socket.poll_recv_from(cx, &mut recv_buffer) {
+                Poll::Ready(Ok(addr)) => {
+                    this.driver.inner.handle_receive(
+                        SansInstant::from_std(this.driver.base_time.into_std()),
+                        addr,
+                        recv_buffer.filled(),
+                    )?;
+                    // Flush any response and deliver events before reading again.
+                    continue;
+                }
+                Poll::Ready(Err(err)) => return Poll::Ready(Err(err.into())),
+                Poll::Pending => {}
             }
 
             // -- Timeout
@@ -387,3 +384,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "driver_tests.rs"]
+mod termination_tests;

@@ -44,6 +44,8 @@ mod encryption;
 pub mod input_batcher;
 pub mod peer;
 
+#[cfg(all(test, feature = "rustcrypto"))]
+mod termination_tests;
 #[cfg(test)]
 mod test;
 
@@ -241,7 +243,7 @@ impl ControlStream {
         Ok(())
     }
     pub fn can_discard(&mut self) -> bool {
-        self.host.can_discard()
+        self.events.is_empty() && self.host.can_discard()
     }
 
     pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), ControlError> {
@@ -402,6 +404,12 @@ impl ControlStream {
 
             trace!("pushing event");
             self.events.push_back(event);
+        }
+
+        // A termination packet can disconnect the peer while leaving events
+        // for the caller. Do not send queued input to that closed peer.
+        if self.host.can_discard() {
+            return Ok(());
         }
 
         // Handle batching
