@@ -34,6 +34,10 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+#[path = "peer_tests.rs"]
+mod peer_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PacketKind {
     /// An unreliable, unsequenced packet.
@@ -405,7 +409,7 @@ impl ControlHost {
 
     #[instrument(level = Level::DEBUG, skip(self))]
     pub fn disconnect(&mut self, id: ControlPeerId, data: u32) -> Result<(), ControlError> {
-        self.host.disconnect(id.0, data)?;
+        self.host.disconnect_later(id.0, data)?;
 
         self.host.service();
         Ok(())

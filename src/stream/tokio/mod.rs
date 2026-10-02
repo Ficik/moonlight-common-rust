@@ -31,6 +31,9 @@ use crate::stream::{
 
 mod driver;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Error)]
 pub enum MoonlightStreamError {
     #[error("io: {0}")]

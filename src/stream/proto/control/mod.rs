@@ -44,8 +44,6 @@ mod encryption;
 pub mod input_batcher;
 pub mod peer;
 
-#[cfg(all(test, feature = "rustcrypto"))]
-mod termination_tests;
 #[cfg(test)]
 mod test;
 
@@ -321,12 +319,6 @@ impl ControlStream {
         if self.peer_connected {
             debug_assert_eq!(self.buffered_packets.len(), 0);
         }
-        if self.host.can_discard() {
-            trace!("erroring with NotConnected because the host can be discarded");
-            // This only happens when there's no peer in the connection
-            // -> we must've disconnected somehow -> this object is not useable anymore
-            return Err(ControlError::NotConnected);
-        }
 
         // Handle events
         while let Some(event) = self.host.poll_event() {
@@ -380,6 +372,7 @@ impl ControlStream {
                             // never arrive.
                             // https://github.com/moonlight-stream/moonlight-common-c/blob/62687809b1f7410c3db4be2527503a54ae408d70/src/ControlStream.c#L1362-L1375
                             self.host.disconnect_now(self.peer, 0)?;
+                            self.events.push_back(ControlStreamEvent::Disconnect);
 
                             // The enet disconnect event will be called next poll
                         }
@@ -402,12 +395,11 @@ impl ControlStream {
                 }
             };
 
-            trace!("pushing event");
+            trace!(event = ?event, "pushing event");
             self.events.push_back(event);
         }
 
-        // A termination packet can disconnect the peer while leaving events
-        // for the caller. Do not send queued input to that closed peer.
+        // We do not need anymore logic if we're already disconnected
         if self.host.can_discard() {
             return Ok(());
         }
