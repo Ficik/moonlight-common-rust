@@ -7,8 +7,9 @@ use std::{io, thread};
 use sans_io_time::Instant;
 use tracing::{Level, Span, debug, instrument, trace};
 
+use crate::error::MoonlightError;
+use crate::stream::proto::runtime::UdpStream;
 use crate::stream::sockets::new_udp_socket;
-use crate::stream::{proto::runtime::UdpStream, std::MoonlightStreamError};
 
 const UDP_BUFFER_CAPACITY: usize = 4096;
 
@@ -23,7 +24,6 @@ pub struct SyncUdpDriver<Stream> {
 impl<Stream> SyncUdpDriver<Stream>
 where
     Stream: UdpStream,
-    MoonlightStreamError: From<Stream::Error>,
 {
     pub fn bind(base_time: StdInstant, stream: Stream) -> Result<Self, io::Error> {
         let socket = new_udp_socket(false, stream.recv_buffer_hint())?;
@@ -56,14 +56,14 @@ where
         f(&mut guard)
     }
 
-    pub fn run(&self) -> Result<(), MoonlightStreamError> {
+    pub fn run(&self) -> Result<(), MoonlightError> {
         if self.is_stopped() {
             return Ok(());
         }
 
         let span = Span::current();
 
-        thread::scope::<_, Result<(), MoonlightStreamError>>(|scope| {
+        thread::scope::<_, Result<(), MoonlightError>>(|scope| {
             debug!("starting udp driver threads");
 
             let send =
@@ -77,9 +77,9 @@ where
             let recv_res = recv.join();
             let timeout_res = timeout.join();
 
-            send_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            recv_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            timeout_res.map_err(MoonlightStreamError::ThreadJoin)??;
+            send_res.map_err(MoonlightError::ThreadJoin)??;
+            recv_res.map_err(MoonlightError::ThreadJoin)??;
+            timeout_res.map_err(MoonlightError::ThreadJoin)??;
 
             Ok(())
         })?;
@@ -90,7 +90,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_send(&self) -> Result<(), MoonlightStreamError> {
+    fn blocking_send(&self) -> Result<(), MoonlightError> {
         debug!("started sending thread");
 
         // This handles sending packets
@@ -160,7 +160,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_recv(&self) -> Result<(), MoonlightStreamError> {
+    fn blocking_recv(&self) -> Result<(), MoonlightError> {
         debug!("started receiving thread");
 
         // This handles receiving packets
@@ -202,7 +202,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_timeout(&self) -> Result<(), MoonlightStreamError> {
+    fn blocking_timeout(&self) -> Result<(), MoonlightError> {
         debug!("started timeout thread");
 
         // This handles timeouts
@@ -234,9 +234,7 @@ where
                     #[cfg(debug_assertions)]
                     trace!("handling timeout");
 
-                    stream
-                        .handle_timeout(Instant::from_std(self.base_time))
-                        .map_err(MoonlightStreamError::from)?;
+                    stream.handle_timeout(Instant::from_std(self.base_time))?;
                     self.stream_condvar.notify_all();
                 } else {
                     #[cfg(debug_assertions)]

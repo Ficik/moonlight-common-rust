@@ -1,6 +1,5 @@
 use sans_io_time::Instant as SInstant;
 use std::{
-    any::Any,
     io::{self, Read, Write},
     net::TcpStream,
     sync::{
@@ -12,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use thiserror::Error;
 use tracing::{Level, debug, info, info_span, instrument, trace, warn};
 
 use crate::{
@@ -24,8 +22,8 @@ use crate::{
         control::EstimatedRttInfo,
         proto::{
             DynCryptoBackend, MOONLIGHT_STREAM_SETUP_TCP_CONNECT_TIMEOUT, MoonlightStreamInput,
-            MoonlightStreamSetup, MoonlightStreamSetupError, MoonlightStreamSetupOutput,
-            audio::{AudioStream, AudioStreamError, AudioStreamEvent},
+            MoonlightStreamSetup, MoonlightStreamSetupOutput,
+            audio::{AudioStream, AudioStreamEvent},
             control::{
                 ControlStream, ControlStreamEvent,
                 input_batcher::ClientInputEvent,
@@ -33,8 +31,8 @@ use crate::{
                 peer::PacketSendError,
             },
             crypto::CryptoBackend,
-            microphone::foundation::{FoundationMicStream, FoundationMicStreamError},
-            video::{VideoStream, VideoStreamError, VideoStreamEvent},
+            microphone::foundation::FoundationMicStream,
+            video::{VideoStream, VideoStreamEvent},
         },
         std::driver::SyncUdpDriver,
         video::VideoDecoder,
@@ -333,13 +331,13 @@ impl Inner {
         mut video_decoder: impl VideoDecoder + Send + 'static,
         mut audio_decoder: impl AudioDecoder + Send + 'static,
         mut connection_listener: impl ConnectionListener + Send + 'static,
-    ) -> Result<(), MoonlightStreamError> {
+    ) -> Result<(), MoonlightError> {
         let audio = info_span!("audio_stream");
         let video = info_span!("video_stream");
         let control = info_span!("control_stream");
         let foundation_mic = info_span!("foundation_mic");
 
-        thread::scope::<_, Result<_, MoonlightStreamError>>(|scope| {
+        thread::scope::<_, Result<_, MoonlightError>>(|scope| {
             let audio_run = scope
                 .spawn(|| audio.in_scope(|| self.streams.audio.run().inspect_err(|_| self.stop())));
             let audio_events = scope.spawn(|| {
@@ -489,18 +487,18 @@ impl Inner {
             let foundation_mic_res = foundation_mic_run.map(|x| x.join());
 
             // -- Handle possible errors
-            audio_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            audio_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
+            audio_run_res.map_err(MoonlightError::ThreadJoin)??;
+            audio_events_res.map_err(MoonlightError::ThreadJoin)?;
 
-            video_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            video_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
+            video_run_res.map_err(MoonlightError::ThreadJoin)??;
+            video_events_res.map_err(MoonlightError::ThreadJoin)?;
 
-            control_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            control_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
+            control_run_res.map_err(MoonlightError::ThreadJoin)??;
+            control_events_res.map_err(MoonlightError::ThreadJoin)?;
 
             foundation_mic_res
                 .transpose()
-                .map_err(MoonlightStreamError::ThreadJoin)?
+                .map_err(MoonlightError::ThreadJoin)?
                 .transpose()?;
 
             Ok(())
