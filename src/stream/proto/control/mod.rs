@@ -157,10 +157,14 @@ impl ControlStream {
         })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, PacketSendError> {
-        self.host
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
+        Ok(self
+            .host
             .peer_estimated_rtt(self.peer)
-            .ok_or(PacketSendError::PeerNotConnected)
+            .unwrap_or(EstimatedRttInfo {
+                rtt: Duration::ZERO,
+                rtt_variance: Duration::ZERO,
+            }))
     }
 
     /// This will intelligently batch or instantly send the input based on if it makes sense to do so.

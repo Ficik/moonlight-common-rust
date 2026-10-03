@@ -1,5 +1,7 @@
 use std::{
+    any::Any,
     ffi::NulError,
+    fmt::{self, Display},
     io,
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr,
@@ -95,21 +97,95 @@ pub enum MoonlightError {
     #[error("invalid link header")]
     InvalidLinkHeader,
     // --- Other ---
+    #[error("a lock has been poisoned")]
+    LockPoisoned,
     #[error("io: {0}")]
     Io(#[from] io::Error),
+    #[error("failed to join a thread: {0}")]
+    ThreadPanic(String),
     #[error("other: {0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
+    #[error("multiple errors occured: {0}")]
+    List(ErrorList),
 }
 
-#[derive(Debug, Error)]
-#[error("poisoned lock: another task failed inside")]
-struct PoisonError;
+impl MoonlightError {
+    pub(crate) fn from_thread_panic(error: Box<dyn Any + Send>) -> Self {
+        let message = if let Some(message) = error.downcast_ref::<&str>() {
+            (*message).to_owned()
+        } else if let Some(message) = error.downcast_ref::<String>() {
+            message.clone()
+        } else {
+            "unknown panic payload".to_owned()
+        };
+
+        MoonlightError::ThreadPanic(message)
+    }
+
+    pub(crate) fn other(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Other(error.into())
+    }
+}
 
 impl<T> From<std::sync::PoisonError<T>> for MoonlightError {
     fn from(_value: std::sync::PoisonError<T>) -> Self {
-        Self::Other(PoisonError.into())
+        Self::LockPoisoned
     }
 }
+
+impl From<ErrorList> for MoonlightError {
+    fn from(value: ErrorList) -> Self {
+        // try to flatten the list if possible
+        if value.0.len() == 1 {
+            value
+                .0
+                .into_iter()
+                .next()
+                .expect("cannot extract first element of error list with length 1")
+        } else {
+            Self::List(value)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ErrorList(Vec<MoonlightError>);
+
+impl From<ErrorList> for Vec<MoonlightError> {
+    fn from(value: ErrorList) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("the error list must be non empty")]
+pub struct ErrorListEmpty;
+
+impl TryFrom<Vec<MoonlightError>> for ErrorList {
+    type Error = ErrorListEmpty;
+
+    fn try_from(value: Vec<MoonlightError>) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            return Err(ErrorListEmpty);
+        }
+
+        Ok(Self(value))
+    }
+}
+
+impl Display for ErrorList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "multiple errors occurred:")?;
+
+        for (i, error) in self.0.iter().enumerate() {
+            writeln!(f, "  {}. {}", i + 1, error)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::error::Error for ErrorList {}
 
 pub(crate) fn parse_error(
     context: &'static str,

@@ -10,6 +10,7 @@ use tracing::{Level, Span, debug, instrument, trace};
 use crate::error::MoonlightError;
 use crate::stream::proto::runtime::UdpStream;
 use crate::stream::sockets::new_udp_socket;
+use crate::stream::std::{finalize_errors, join_run_thread};
 
 const UDP_BUFFER_CAPACITY: usize = 4096;
 
@@ -73,13 +74,13 @@ where
             let timeout = scope
                 .spawn(|| span.in_scope(|| self.blocking_timeout().inspect_err(|_| self.stop())));
 
-            let send_res = send.join();
-            let recv_res = recv.join();
-            let timeout_res = timeout.join();
+            let mut errors = Default::default();
 
-            send_res.map_err(MoonlightError::ThreadJoin)??;
-            recv_res.map_err(MoonlightError::ThreadJoin)??;
-            timeout_res.map_err(MoonlightError::ThreadJoin)??;
+            join_run_thread(&mut errors, send.join());
+            join_run_thread(&mut errors, recv.join());
+            join_run_thread(&mut errors, timeout.join());
+
+            finalize_errors(errors)?;
 
             Ok(())
         })?;

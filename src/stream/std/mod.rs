@@ -1,5 +1,6 @@
 use sans_io_time::Instant as SInstant;
 use std::{
+    any::Any,
     io::{self, Read, Write},
     net::TcpStream,
     sync::{
@@ -14,7 +15,7 @@ use std::{
 use tracing::{Level, debug, info, info_span, instrument, trace, warn};
 
 use crate::{
-    error::MoonlightError,
+    error::{ErrorList, MoonlightError},
     stream::{
         HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         audio::{AudioConfig, AudioDecoder, AudioFrame},
@@ -28,7 +29,6 @@ use crate::{
                 ControlStream, ControlStreamEvent,
                 input_batcher::ClientInputEvent,
                 packet::{ControlPacket, TerminationReason},
-                peer::PacketSendError,
             },
             crypto::CryptoBackend,
             microphone::foundation::FoundationMicStream,
@@ -229,7 +229,12 @@ impl MoonlightStream {
                 debug!("enet connect failed");
                 let error = handle.join();
 
-                error.map_err(MoonlightError::Other)??;
+                let mut errors = Default::default();
+
+                join_run_thread(&mut errors, error);
+
+                finalize_errors(errors)?;
+
                 unreachable!()
             }
             Err(RecvTimeoutError::Timeout) => {
@@ -243,14 +248,14 @@ impl MoonlightStream {
         Ok(Self { inner })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, PacketSendError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
         self.inner
             .streams
             .control
             .stream(|stream| stream.estimated_rtt())
     }
 
-    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), PacketSendError> {
+    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), MoonlightError> {
         trace!(input = ?input, "received input from application");
 
         self.inner
@@ -260,7 +265,7 @@ impl MoonlightStream {
 
         Ok(())
     }
-    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), PacketSendError> {
+    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), MoonlightError> {
         trace!(packet = ?packet, "received packet from application");
 
         self.inner
@@ -475,31 +480,22 @@ impl Inner {
             // No need for foundation mic events, it's only sending
 
             // -- Join all threads
-            let audio_run_res = audio_run.join();
-            let audio_events_res = audio_events.join();
+            let mut errors = Default::default();
 
-            let video_run_res = video_run.join();
-            let video_events_res = video_events.join();
+            join_run_thread(&mut errors, audio_run.join());
+            join_event_thread(&mut errors, audio_events.join());
 
-            let control_run_res = control_run.join();
-            let control_events_res = control_events.join();
+            join_run_thread(&mut errors, video_run.join());
+            join_event_thread(&mut errors, video_events.join());
 
-            let foundation_mic_res = foundation_mic_run.map(|x| x.join());
+            join_run_thread(&mut errors, control_run.join());
+            join_event_thread(&mut errors, control_events.join());
 
-            // -- Handle possible errors
-            audio_run_res.map_err(MoonlightError::ThreadJoin)??;
-            audio_events_res.map_err(MoonlightError::ThreadJoin)?;
+            if let Some(foundation_mic_run) = foundation_mic_run {
+                join_run_thread(&mut errors, foundation_mic_run.join());
+            }
 
-            video_run_res.map_err(MoonlightError::ThreadJoin)??;
-            video_events_res.map_err(MoonlightError::ThreadJoin)?;
-
-            control_run_res.map_err(MoonlightError::ThreadJoin)??;
-            control_events_res.map_err(MoonlightError::ThreadJoin)?;
-
-            foundation_mic_res
-                .transpose()
-                .map_err(MoonlightError::ThreadJoin)?
-                .transpose()?;
+            finalize_errors(errors)?;
 
             Ok(())
         })?;
@@ -520,5 +516,28 @@ impl Inner {
         if let Some(foundation_mic) = &self.streams.foundation_mic {
             foundation_mic.stop();
         }
+    }
+}
+
+fn join_run_thread(
+    errors: &mut Vec<MoonlightError>,
+    error: Result<Result<(), MoonlightError>, Box<dyn Any + Send>>,
+) {
+    match error {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => errors.push(error),
+        Err(error) => errors.push(MoonlightError::from_thread_panic(error)),
+    }
+}
+fn join_event_thread(errors: &mut Vec<MoonlightError>, error: Result<(), Box<dyn Any + Send>>) {
+    match error {
+        Ok(_) => {}
+        Err(error) => errors.push(MoonlightError::from_thread_panic(error)),
+    }
+}
+fn finalize_errors(errors: Vec<MoonlightError>) -> Result<(), MoonlightError> {
+    match ErrorList::try_from(errors) {
+        Ok(value) => Err(value.into()),
+        Err(_) => Ok(()),
     }
 }

@@ -193,8 +193,12 @@ impl RequestClient for TokioHyperClient {
         let verifier = NoHostnameVerifier {
             // The builder doesn't store the Arc reference anywhere so we can move the value out of the Arc
             #[allow(clippy::unwrap_used)]
-            base: Arc::try_unwrap(WebPkiServerVerifier::builder(root_certificates).build()?)
-                .unwrap(),
+            base: Arc::try_unwrap(
+                WebPkiServerVerifier::builder(root_certificates)
+                    .build()
+                    .map_err(MoonlightError::other)?,
+            )
+            .unwrap(),
         };
         config
             .dangerous()

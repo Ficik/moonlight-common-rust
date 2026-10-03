@@ -21,7 +21,7 @@ use crate::{
             audio::{AudioStream, AudioStreamEvent},
             control::{
                 ControlStream, ControlStreamEvent, input_batcher::ClientInputEvent,
-                packet::ControlPacket, peer::PacketSendError,
+                packet::ControlPacket,
             },
             microphone::foundation::FoundationMicStream,
             video::{VideoStream, VideoStreamEvent},
@@ -234,7 +234,7 @@ impl MoonlightStream {
         self.video_setup
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, PacketSendError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
         self.control_stream.stream().estimated_rtt()
     }
 
