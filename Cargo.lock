@@ -1058,6 +1058,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1582,12 +1591,12 @@ dependencies = [
 
 [[package]]
 name = "printf-compat"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "613142bc127747febf3eae56e000f1be431756a6eaa8d3f060f9144d938e798c"
+checksum = "a39aa116139934158266a4ff5b40cca9c7c06b525b3f11c2562f897430a52685"
 dependencies = [
  "bitflags",
- "itertools 0.14.0",
+ "itertools 0.15.0",
 ]
 
 [[package]]
