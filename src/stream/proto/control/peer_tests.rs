@@ -1,4 +1,4 @@
-use std::{fmt::Debug, net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use sans_io_time::Instant;
 use tracing::{debug, debug_span, info};
@@ -22,9 +22,7 @@ use crate::{
 fn transfer<S, D>(peer_a: (SocketAddr, &mut S), peer_b: (SocketAddr, &mut D), now: Instant)
 where
     S: UdpStream,
-    S::Error: Debug,
     D: UdpStream,
-    D::Error: Debug,
 {
     let (peer_a_addr, peer_a_stream) = peer_a;
     let (peer_b_addr, peer_b_stream) = peer_b;

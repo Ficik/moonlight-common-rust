@@ -8,7 +8,7 @@ use tokio::{
 };
 
 use super::StreamDriver;
-use crate::stream::{proto::runtime::UdpStream, tokio::MoonlightStreamError};
+use crate::{error::Error, stream::proto::runtime::UdpStream};
 
 #[derive(Debug, PartialEq)]
 enum TestEvent {
@@ -26,11 +26,9 @@ struct TestStream {
     send_list: VecDeque<(SocketAddr, Vec<u8>)>,
     event_list: VecDeque<TestEvent>,
     timeout: Option<SansInstant>,
-    errors: Vec<MoonlightStreamError>,
+    errors: Vec<Error>,
 }
 impl UdpStream for TestStream {
-    type Error = MoonlightStreamError;
-
     type Event = TestEvent;
 
     fn consume_send(&mut self) {
@@ -54,7 +52,7 @@ impl UdpStream for TestStream {
         now: SansInstant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         self.event_list.push_back(TestEvent::Receive {
             now,
             addr,
@@ -66,7 +64,7 @@ impl UdpStream for TestStream {
         }
         Ok(())
     }
-    fn handle_timeout(&mut self, now: SansInstant) -> Result<(), Self::Error> {
+    fn handle_timeout(&mut self, now: SansInstant) -> Result<(), Error> {
         self.event_list.push_back(TestEvent::Timeout(now));
 
         if let Some(error) = self.errors.pop() {
@@ -240,10 +238,7 @@ async fn deliver_events_before_error() {
         .stream_mut()
         .event_list
         .push_front(TestEvent::Other(0));
-    driver
-        .stream_mut()
-        .errors
-        .push(MoonlightStreamError::Closed);
+    driver.stream_mut().errors.push(Error::ConnectionFailed);
 
     assert_eq!(
         timeout(Duration::from_secs(1), driver.drive())

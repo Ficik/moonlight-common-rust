@@ -132,7 +132,7 @@ impl EnetHost {
         Ok(peer.id())
     }
 
-    pub fn disconnect(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
+    pub fn disconnect_later(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
         self.enet
             .get_peer_mut(id)
             .ok_or(Error::PacketSend(PacketSendError::PeerNotFound))?
