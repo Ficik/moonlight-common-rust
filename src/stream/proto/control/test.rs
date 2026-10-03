@@ -664,6 +664,38 @@ fn controller_state() {
 }
 
 #[test]
+fn controller_touch() {
+    test_packet(
+        PacketDirection::ServerBound,
+        sunshine_gen_7_enc_config(),
+        ControlPacket::ControllerTouch {
+            controller_number: 1,
+            event_type: TouchEventType::Down,
+            zero: 0,
+            touchpad_index: 2,
+            pointer_id: 3,
+            x: 1.0,
+            y: 2.0,
+            pressure: 3.0,
+        },
+        &[
+            6, 2, // Type
+            28, 0, // Length
+            0, 0, 0, 24, // Input Length
+            5, 0, 0, 85, // Input Type
+            1,  // controller number
+            1,  // event type
+            0,  // zero
+            2,  // touchpad index
+            3, 0, 0, 0, // pointer id
+            0, 0, 128, 63, // x
+            0, 0, 0, 64, // y
+            0, 0, 64, 64, // pressure
+        ],
+    );
+}
+
+#[test]
 fn controller_set_motion() {
     test_packet(
         PacketDirection::ClientBound,

@@ -990,6 +990,29 @@ pub enum ControlPacket {
         /// This is 0.
         reserved: u8,
     },
+    /// Sunshine Extension
+    ///
+    /// This packet is similar to [ControlPacket::Touch], but it allows the touchpad index to be
+    /// provided for use with controllers that have multiple touchpads (like the Steam Controller).
+    ///
+    /// Available only if [HostFeatures::controller_touch](super::super::HostFeatures::controller_touch) is enabled.
+    ///
+    /// See Also:
+    /// - [ControlPacket::Touch]
+    ///
+    /// References:
+    /// - <https://github.com/moonlight-stream/moonlight-common-c/blob/f900dd4767759c7b9d0e93bcea666b55c69ea62f/src/Input.h#L166-L177>
+    /// - how to use correctly: <https://github.com/moonlight-stream/moonlight-common-c/blob/f900dd4767759c7b9d0e93bcea666b55c69ea62f/src/InputStream.c#L1477-L1524>
+    ControllerTouch {
+        controller_number: u8,
+        event_type: TouchEventType,
+        zero: u8, // Alignment/reserved
+        touchpad_index: u8,
+        pointer_id: u32,
+        x: f32,
+        y: f32,
+        pressure: f32,
+    },
     /// Invalidates references frames. Make sure the server supports this using the sdp before requesting this.
     ///
     /// References:
@@ -1190,6 +1213,10 @@ impl ControlPacket {
                         .unwrap_or(EnetChannel::CHANNEL_GAMEPAD_BASE),
                     PacketKind::Sequenced,
                 ),
+                ControlPacket::ControllerTouch { .. } => {
+                    // TODO: see if it's batchable: https://github.com/moonlight-stream/moonlight-common-c/blob/f900dd4767759c7b9d0e93bcea666b55c69ea62f/src/InputStream.c#L1501-L1503
+                    (EnetChannel::CHANNEL_TOUCH, PacketKind::Reliable)
+                }
                 ControlPacket::MouseScroll { .. } => {
                     // https://github.com/moonlight-stream/moonlight-common-c/blob/7b026e77be62175104640e7e722b758df6d3d0d7/src/InputStream.c#L1252-L1253
                     (EnetChannel::CHANNEL_MOUSE, PacketKind::Reliable)
@@ -1260,6 +1287,7 @@ impl ControlPacket {
             Self::Touch { .. } => ControlPacketType::InputData,
             Self::Pen { .. } => ControlPacketType::InputData,
             Self::ControllerState { .. } => ControlPacketType::InputData,
+            Self::ControllerTouch { .. } => ControlPacketType::InputData,
             Self::ControllerArrival { .. } => ControlPacketType::InputData,
             Self::ControllerMotion { .. } => ControlPacketType::InputData,
             Self::ControllerBattery { .. } => ControlPacketType::InputData,
@@ -1773,6 +1801,44 @@ impl ControlPacket {
                 buffer[32..34].copy_from_slice(&tail_a.to_le_bytes());
                 buffer[34..36].copy_from_slice(&button_flags_2.to_le_bytes());
                 buffer[36..38].copy_from_slice(&tail_b.to_le_bytes());
+
+                Ok(4 + content_len as usize)
+            }
+            Self::ControllerTouch {
+                controller_number,
+                event_type,
+                zero,
+                touchpad_index,
+                pointer_id,
+                x,
+                y,
+                pressure,
+            } => {
+                // Ty
+                let ty = config.input_data;
+                buffer[0..2].copy_from_slice(&ty.to_le_bytes());
+
+                // Length
+                let input_len: u32 = 24;
+                let content_len: u16 = 4 + input_len as u16;
+                buffer[2..4].copy_from_slice(&content_len.to_le_bytes());
+
+                // Input Len
+                buffer[4..8].copy_from_slice(&input_len.to_be_bytes());
+
+                // Input Ty
+                let ty: u32 = SS_CONTROLLER_TOUCH_MAGIC;
+                buffer[8..12].copy_from_slice(&ty.to_le_bytes());
+
+                // Data
+                buffer[12..13].copy_from_slice(&[*controller_number]);
+                buffer[13..14].copy_from_slice(&[*event_type as u8]);
+                buffer[14..15].copy_from_slice(&[*zero]);
+                buffer[15..16].copy_from_slice(&[*touchpad_index]);
+                buffer[16..20].copy_from_slice(&pointer_id.to_le_bytes());
+                buffer[20..24].copy_from_slice(&x.to_le_bytes());
+                buffer[24..28].copy_from_slice(&y.to_le_bytes());
+                buffer[28..32].copy_from_slice(&pressure.to_le_bytes());
 
                 Ok(4 + content_len as usize)
             }
@@ -2647,7 +2713,7 @@ impl ControlPacket {
                     }
                     MULTI_CONTROLLER_MAGIC_GEN5 => {
                         if input_len < 30 {
-                            warn!(input_len = ?input_len, "ControllerArrival packet too small!");
+                            warn!(input_len = ?input_len, "ControllerState packet too small!");
                             None
                         } else {
                             let header_b = i16::from_le_bytes([payload[12], payload[13]]);
@@ -2684,6 +2750,58 @@ impl ControlPacket {
                                 tail_a,
                                 button_flags_2,
                                 tail_b,
+                            })
+                        }
+                    }
+                    SS_CONTROLLER_TOUCH_MAGIC => {
+                        if input_len < 24 {
+                            warn!(input_len = ?input_len, "ControllerTouch packet too small!");
+                            None
+                        } else {
+                            let controller_number = payload[12];
+                            let Some(event_type) = TouchEventType::from_u8(payload[13]) else {
+                                warn!(
+                                    got_type = payload[13],
+                                    "Touch packet contains unknown touch event type"
+                                );
+                                return None;
+                            };
+                            let zero = payload[14];
+                            let touchpad_index = payload[15];
+                            let pointer_id = u32::from_le_bytes([
+                                payload[16],
+                                payload[17],
+                                payload[18],
+                                payload[19],
+                            ]);
+                            let x = f32::from_le_bytes([
+                                payload[20],
+                                payload[21],
+                                payload[22],
+                                payload[23],
+                            ]);
+                            let y = f32::from_le_bytes([
+                                payload[24],
+                                payload[25],
+                                payload[26],
+                                payload[27],
+                            ]);
+                            let pressure = f32::from_le_bytes([
+                                payload[28],
+                                payload[29],
+                                payload[30],
+                                payload[31],
+                            ]);
+
+                            Some(ControlPacket::ControllerTouch {
+                                controller_number,
+                                event_type,
+                                zero,
+                                touchpad_index,
+                                pointer_id,
+                                x,
+                                y,
+                                pressure,
                             })
                         }
                     }
