@@ -22,7 +22,7 @@ use rustls::{
 use tracing::{Level, debug, instrument};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientInfo, Endpoint, TextResponse,
         client::{
@@ -32,7 +32,7 @@ use crate::{
     },
 };
 
-impl From<hyper::Error> for MoonlightError {
+impl From<hyper::Error> for Error {
     fn from(value: hyper::Error) -> Self {
         if value.is_timeout() {
             return Self::ConnectionTimeout;
@@ -43,12 +43,12 @@ impl From<hyper::Error> for MoonlightError {
         Self::Other(value.into())
     }
 }
-impl From<hyper_util::client::legacy::Error> for MoonlightError {
+impl From<hyper_util::client::legacy::Error> for Error {
     fn from(_value: hyper_util::client::legacy::Error) -> Self {
         Self::ConnectionFailed
     }
 }
-impl From<rustls::Error> for MoonlightError {
+impl From<rustls::Error> for Error {
     fn from(value: rustls::Error) -> Self {
         Self::Other(value.into())
     }
@@ -124,7 +124,7 @@ fn build_client(
         .build(https_connector)
 }
 
-async fn response_to_bytes(mut response: Response<Incoming>) -> Result<Vec<u8>, MoonlightError> {
+async fn response_to_bytes(mut response: Response<Incoming>) -> Result<Vec<u8>, Error> {
     let mut bytes = Vec::new();
 
     // Stream the body, writing each chunk to our response buffer
@@ -144,13 +144,13 @@ pub struct TokioHyperClient {
 }
 
 impl RequestClient for TokioHyperClient {
-    fn with_defaults_long_timeout() -> Result<Self, MoonlightError> {
+    fn with_defaults_long_timeout() -> Result<Self, Error> {
         let client = build_client(build_empty_rustls_connector(DEFAULT_LONG_TIMEOUT));
 
         Ok(Self { client })
     }
 
-    fn with_defaults() -> Result<Self, MoonlightError> {
+    fn with_defaults() -> Result<Self, Error> {
         let client = build_client(build_empty_rustls_connector(DEFAULT_TIMEOUT));
 
         Ok(Self { client })
@@ -162,16 +162,16 @@ impl RequestClient for TokioHyperClient {
         client_private_key: &pem::Pem,
         client_certificate: &pem::Pem,
         server_certificate: &pem::Pem,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         // Client
         if !client_private_key.tag().eq_ignore_ascii_case("PRIVATE KEY") {
-            return Err(MoonlightError::Other("".into()));
+            return Err(Error::Other("".into()));
         }
         let private_key = PrivateKeyDer::from_pem(
             SectionKind::PrivateKey,
             client_private_key.contents().to_vec(),
         )
-        .ok_or(MoonlightError::Other(
+        .ok_or(Error::Other(
             "invalid private key".to_string().into(),
         ))?
         .clone_key();
@@ -198,7 +198,7 @@ impl RequestClient for TokioHyperClient {
             base: Arc::try_unwrap(
                 WebPkiServerVerifier::builder(root_certificates)
                     .build()
-                    .map_err(MoonlightError::other)?,
+                    .map_err(Error::other)?,
             )
             .unwrap(),
         };
@@ -225,7 +225,7 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Request: Sync,
@@ -250,7 +250,7 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Request: Sync,
@@ -275,7 +275,7 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint<Response = Vec<u8>>,
         E::Request: Sync,

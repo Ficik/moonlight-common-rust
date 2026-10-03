@@ -8,7 +8,7 @@ use fec_rs::ReedSolomon;
 use thiserror::Error;
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         SunshineEncryption,
         audio::AudioFrame,
@@ -37,7 +37,7 @@ pub enum AudioDepayloaderError {
     ReedSolomon(#[from] fec_rs::Error),
 }
 
-impl From<AudioDepayloaderError> for MoonlightError {
+impl From<AudioDepayloaderError> for Error {
     fn from(value: AudioDepayloaderError) -> Self {
         Self::Other(value.into())
     }

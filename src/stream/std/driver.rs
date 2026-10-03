@@ -7,7 +7,7 @@ use std::{io, thread};
 use sans_io_time::Instant;
 use tracing::{Level, Span, debug, instrument, trace};
 
-use crate::error::MoonlightError;
+use crate::error::Error;
 use crate::stream::proto::runtime::UdpStream;
 use crate::stream::sockets::new_udp_socket;
 use crate::stream::std::{finalize_errors, join_run_thread};
@@ -57,14 +57,14 @@ where
         f(&mut guard)
     }
 
-    pub fn run(&self) -> Result<(), MoonlightError> {
+    pub fn run(&self) -> Result<(), Error> {
         if self.is_stopped() {
             return Ok(());
         }
 
         let span = Span::current();
 
-        thread::scope::<_, Result<(), MoonlightError>>(|scope| {
+        thread::scope::<_, Result<(), Error>>(|scope| {
             debug!("starting udp driver threads");
 
             let send =
@@ -91,7 +91,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_send(&self) -> Result<(), MoonlightError> {
+    fn blocking_send(&self) -> Result<(), Error> {
         debug!("started sending thread");
 
         // This handles sending packets
@@ -161,7 +161,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_recv(&self) -> Result<(), MoonlightError> {
+    fn blocking_recv(&self) -> Result<(), Error> {
         debug!("started receiving thread");
 
         // This handles receiving packets
@@ -203,7 +203,7 @@ where
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    fn blocking_timeout(&self) -> Result<(), MoonlightError> {
+    fn blocking_timeout(&self) -> Result<(), Error> {
         debug!("started timeout thread");
 
         // This handles timeouts

@@ -1,6 +1,6 @@
 use crate::{
     AppId,
-    error::{MoonlightError, parse_i32, parse_u32},
+    error::{Error, parse_i32, parse_u32},
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
         helper::u32_to_str,
@@ -57,7 +57,7 @@ impl Request for AppBoxArtRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {

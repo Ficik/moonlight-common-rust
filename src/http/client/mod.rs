@@ -17,7 +17,7 @@ mod hyperlike {
     use hyper::Uri;
 
     use crate::{
-        error::MoonlightError,
+        error::Error,
         http::{ClientInfo, Endpoint, QueryBuilder, QueryBuilderError, QueryParam, Request},
     };
 
@@ -46,7 +46,7 @@ mod hyperlike {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<Uri, MoonlightError>
+    ) -> Result<Uri, Error>
     where
         E: Endpoint,
     {
@@ -68,7 +68,7 @@ mod hyperlike {
             .authority(hostport)
             .path_and_query(path_and_query)
             .build()
-            .map_err(|err| MoonlightError::Other(err.into()))?;
+            .map_err(|err| Error::Other(err.into()))?;
 
         Ok(uri)
     }

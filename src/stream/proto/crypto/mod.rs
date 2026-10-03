@@ -1,6 +1,6 @@
 use std::{fmt::Debug, sync::Arc};
 
-use crate::error::MoonlightError;
+use crate::error::Error;
 
 #[cfg(test)]
 pub(crate) mod test;
@@ -15,7 +15,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         input: &[u8],
         output: &mut [u8],
         tag: &mut [u8],
-    ) -> Result<(), MoonlightError>;
+    ) -> Result<(), Error>;
 
     /// Decrypt using AES-GCM.
     /// Verifies `tag` before returning plaintext length.
@@ -26,7 +26,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         input: &[u8],
         tag: &[u8],
         output: &mut [u8],
-    ) -> Result<(), MoonlightError>;
+    ) -> Result<(), Error>;
 
     /// Encrypt using AES-CBC with PKCS7 padding.
     /// Returns number of bytes written after adding padding.
@@ -38,7 +38,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, MoonlightError>;
+    ) -> Result<usize, Error>;
 
     /// Decrypt using AES-CBC with PKCS7 padding.
     /// Returns number of bytes written after unpadding.
@@ -50,7 +50,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, MoonlightError>;
+    ) -> Result<usize, Error>;
 }
 
 impl<T> CryptoBackend for Arc<T>
@@ -64,7 +64,7 @@ where
         input: &[u8],
         output: &mut [u8],
         tag: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         T::encrypt_aes_gcm(self, key, iv, input, output, tag)
     }
 
@@ -75,7 +75,7 @@ where
         input: &[u8],
         tag: &[u8],
         output: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         T::decrypt_aes_gcm(self, key, iv, input, tag, output)
     }
 
@@ -85,7 +85,7 @@ where
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, MoonlightError> {
+    ) -> Result<usize, Error> {
         T::encrypt_aes_cbc(self, key, iv, input, output)
     }
 
@@ -95,7 +95,7 @@ where
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, MoonlightError> {
+    ) -> Result<usize, Error> {
         T::decrypt_aes_cbc(self, key, iv, input, output)
     }
 }

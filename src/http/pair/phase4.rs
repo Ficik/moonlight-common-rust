@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::{MoonlightError, parse_hex},
+    error::{Error, parse_hex},
     http::{
         QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::parse_xml_root_node, pair::parse_xml_child_paired,
@@ -39,7 +39,7 @@ impl Request for PairPhase4Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -90,7 +90,7 @@ impl TextResponse for PairPhase4Response {
 }
 
 impl FromStr for PairPhase4Response {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         const ERROR_CONTEXT: &str = "http xml: pair 4";

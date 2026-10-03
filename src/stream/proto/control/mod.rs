@@ -12,7 +12,7 @@ use tracing::{Level, debug, info, instrument, trace, warn};
 
 use crate::{
     ServerVersion,
-    error::MoonlightError,
+    error::Error,
     http::server_info::ApolloPermissions,
     stream::{
         AesKey,
@@ -96,13 +96,13 @@ impl ControlStream {
         now: Instant,
         config: ControlStreamConfig,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         debug!("new control stream");
 
         if config.server_version.major < 5 {
             // Servers below v5 use tcp and don't have encryption support
             // https://github.com/moonlight-stream/moonlight-common-c/blob/7b026e77be62175104640e7e722b758df6d3d0d7/src/ControlStream.c#L849-L856
-            return Err(MoonlightError::ServerVersionNotSupported(
+            return Err(Error::ServerVersionNotSupported(
                 config.server_version,
             ));
         }
@@ -121,7 +121,7 @@ impl ControlStream {
         .unwrap();
 
         let packets = ControlPacketConfig::new(config.server_version, config.encryption.is_some())
-            .ok_or(MoonlightError::ServerVersionNotSupported(
+            .ok_or(Error::ServerVersionNotSupported(
                 config.server_version,
             ))?;
 
@@ -159,7 +159,7 @@ impl ControlStream {
         })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
         Ok(self
             .host
             .peer_estimated_rtt(self.peer)
@@ -170,7 +170,7 @@ impl ControlStream {
     }
 
     /// This will intelligently batch or instantly send the input based on if it makes sense to do so.
-    pub fn batch_input(&mut self, input: ClientInputEvent) -> Result<(), MoonlightError> {
+    pub fn batch_input(&mut self, input: ClientInputEvent) -> Result<(), Error> {
         trace!(input = ?input, "batching input for control stream");
 
         self.check_input_supported(&input)?;
@@ -185,7 +185,7 @@ impl ControlStream {
     /// Will send all batched inputs now.
     ///
     /// This is automatically done if you're following the default event loop of this struct.
-    pub fn send_batched_inputs_now(&mut self) -> Result<(), MoonlightError> {
+    pub fn send_batched_inputs_now(&mut self) -> Result<(), Error> {
         self.last_batch_send = self.last_now;
 
         for packet in self.batcher.remove_batched_inputs() {
@@ -244,7 +244,7 @@ impl ControlStream {
         }
     }
 
-    pub fn disconnect(&mut self, disconnect_data: u32) -> Result<(), MoonlightError> {
+    pub fn disconnect(&mut self, disconnect_data: u32) -> Result<(), Error> {
         self.host.disconnect(self.peer, disconnect_data)?;
 
         Ok(())
@@ -253,14 +253,14 @@ impl ControlStream {
         self.host.can_discard()
     }
 
-    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), MoonlightError> {
+    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), Error> {
         self.send_inner(packet, false)
     }
     pub(crate) fn send_inner(
         &mut self,
         packet: ControlPacket,
         force_packet: bool,
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         if force_packet && !self.peer_connected {
             trace!(force_packet = force_packet, packet = ?packet, "buffering forced packet");
 
@@ -275,7 +275,7 @@ impl ControlStream {
         Ok(())
     }
 
-    fn do_batching(&mut self) -> Result<(), MoonlightError> {
+    fn do_batching(&mut self) -> Result<(), Error> {
         if !self.batcher.is_dirty() {
             return Ok(());
         }
@@ -288,7 +288,7 @@ impl ControlStream {
     }
 
     /// Returns the time when the next ping must be sent
-    fn do_ping(&mut self) -> Result<(), MoonlightError> {
+    fn do_ping(&mut self) -> Result<(), Error> {
         // If this server doesn't support the periodic ping
         let Some(last_ping) = self.last_ping else {
             trace!("server doesn't support periodic ping, not sending periodic ping");
@@ -298,7 +298,7 @@ impl ControlStream {
         if self.last_now >= last_ping + PERIODIC_PING_INTERVAL {
             match self.send_raw(ControlPacket::PeriodicPing) {
                 Ok(()) => {}
-                Err(MoonlightError::PacketSend(PacketSendError::PeerNotConnected)) => {
+                Err(Error::PacketSend(PacketSendError::PeerNotConnected)) => {
                     trace!(
                         self = ?self,
                         "not sending periodic ping because the control stream (via enet) is not connected yet."
@@ -321,7 +321,7 @@ impl ControlStream {
         Ok(())
     }
 
-    fn do_update(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn do_update(&mut self, now: Instant) -> Result<(), Error> {
         self.last_now = now;
 
         if self.peer_connected {
@@ -468,7 +468,7 @@ impl UdpStream for ControlStream {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         if self.addr != addr {
             trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
             return Ok(());
@@ -481,7 +481,7 @@ impl UdpStream for ControlStream {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), Error> {
         self.host.handle_timeout(now)?;
 
         self.do_update(now)?;

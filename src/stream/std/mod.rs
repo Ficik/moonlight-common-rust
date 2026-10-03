@@ -15,7 +15,7 @@ use std::{
 use tracing::{Level, debug, info, info_span, instrument, trace, warn};
 
 use crate::{
-    error::{ErrorList, MoonlightError},
+    error::{ErrorList, Error},
     stream::{
         HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         audio::{AudioConfig, AudioDecoder, AudioFrame},
@@ -60,7 +60,7 @@ impl MoonlightStream {
         mut audio_decoder: impl AudioDecoder + Send + 'static,
         connection_listener: impl ConnectionListener + Send + 'static,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         let base_time = Instant::now();
 
         let span = info_span!("stream");
@@ -239,7 +239,7 @@ impl MoonlightStream {
             }
             Err(RecvTimeoutError::Timeout) => {
                 debug!("connection timeout on connect");
-                return Err(MoonlightError::ConnectionTimeout);
+                return Err(Error::ConnectionTimeout);
             }
         }
 
@@ -248,14 +248,14 @@ impl MoonlightStream {
         Ok(Self { inner })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
         self.inner
             .streams
             .control
             .stream(|stream| stream.estimated_rtt())
     }
 
-    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), MoonlightError> {
+    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), Error> {
         trace!(input = ?input, "received input from application");
 
         self.inner
@@ -265,7 +265,7 @@ impl MoonlightStream {
 
         Ok(())
     }
-    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), MoonlightError> {
+    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), Error> {
         trace!(packet = ?packet, "received packet from application");
 
         self.inner
@@ -336,13 +336,13 @@ impl Inner {
         mut video_decoder: impl VideoDecoder + Send + 'static,
         mut audio_decoder: impl AudioDecoder + Send + 'static,
         mut connection_listener: impl ConnectionListener + Send + 'static,
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         let audio = info_span!("audio_stream");
         let video = info_span!("video_stream");
         let control = info_span!("control_stream");
         let foundation_mic = info_span!("foundation_mic");
 
-        thread::scope::<_, Result<_, MoonlightError>>(|scope| {
+        thread::scope::<_, Result<_, Error>>(|scope| {
             let audio_run = scope
                 .spawn(|| audio.in_scope(|| self.streams.audio.run().inspect_err(|_| self.stop())));
             let audio_events = scope.spawn(|| {
@@ -520,22 +520,22 @@ impl Inner {
 }
 
 fn join_run_thread(
-    errors: &mut Vec<MoonlightError>,
-    error: Result<Result<(), MoonlightError>, Box<dyn Any + Send>>,
+    errors: &mut Vec<Error>,
+    error: Result<Result<(), Error>, Box<dyn Any + Send>>,
 ) {
     match error {
         Ok(Ok(_)) => {}
         Ok(Err(error)) => errors.push(error),
-        Err(error) => errors.push(MoonlightError::from_thread_panic(error)),
+        Err(error) => errors.push(Error::from_thread_panic(error)),
     }
 }
-fn join_event_thread(errors: &mut Vec<MoonlightError>, error: Result<(), Box<dyn Any + Send>>) {
+fn join_event_thread(errors: &mut Vec<Error>, error: Result<(), Box<dyn Any + Send>>) {
     match error {
         Ok(_) => {}
-        Err(error) => errors.push(MoonlightError::from_thread_panic(error)),
+        Err(error) => errors.push(Error::from_thread_panic(error)),
     }
 }
-fn finalize_errors(errors: Vec<MoonlightError>) -> Result<(), MoonlightError> {
+fn finalize_errors(errors: Vec<Error>) -> Result<(), Error> {
     match ErrorList::try_from(errors) {
         Ok(value) => Err(value.into()),
         Err(_) => Ok(()),

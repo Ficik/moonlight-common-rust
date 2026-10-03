@@ -10,7 +10,7 @@ use sans_io_time::Instant;
 use tracing::{Level, debug, info, instrument, trace};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesKey,
         proto::{
@@ -108,7 +108,7 @@ impl VideoStream {
         }
     }
 
-    fn do_idr_request(&mut self) -> Result<(), MoonlightError> {
+    fn do_idr_request(&mut self) -> Result<(), Error> {
         // request an idr if needed
         let timeout = self.wait_until_idr();
 
@@ -168,7 +168,7 @@ impl VideoStream {
         timeout
     }
 
-    fn update(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn update(&mut self, now: Instant) -> Result<(), Error> {
         let mut frame_to_return = None;
 
         // Add the first seen numbers
@@ -286,7 +286,7 @@ impl UdpStream for VideoStream {
         self.events.pop_front()
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), Error> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);
@@ -300,7 +300,7 @@ impl UdpStream for VideoStream {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);

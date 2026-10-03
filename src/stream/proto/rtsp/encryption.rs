@@ -3,7 +3,7 @@ use thiserror::Error;
 use tracing::{Level, debug, instrument, trace};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesKey,
         proto::{crypto::CryptoBackend, rtsp::packet::RtspEncryptionHeader},
@@ -21,7 +21,7 @@ pub enum RtspEncryptionError {
     #[error("the provided output buffer is too small")]
     OutputTooSmall,
 }
-impl From<RtspEncryptionError> for MoonlightError {
+impl From<RtspEncryptionError> for Error {
     fn from(value: RtspEncryptionError) -> Self {
         Self::Other(value.into())
     }
@@ -35,7 +35,7 @@ pub fn encrypt_client_rtsp_message_into<Crypto>(
     sequence_number: usize,
     message: &[u8],
     encrypted_message: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -88,7 +88,7 @@ pub fn decrypt_client_rtsp_message_into<Crypto>(
     aes_key: AesKey,
     encrypted_message: &[u8],
     message: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -145,7 +145,7 @@ pub fn encrypt_server_rtsp_message_into<Crypto>(
     sequence_number: usize,
     message: &[u8],
     encrypted_message: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -195,7 +195,7 @@ pub fn decrypt_server_rtsp_message_into<Crypto>(
     aes_key: AesKey,
     encrypted_message: &[u8],
     message: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {

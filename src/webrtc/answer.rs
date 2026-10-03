@@ -3,7 +3,7 @@ use std::str::FromStr;
 use sdp_types::Session;
 
 use crate::{
-    error::{MoonlightError, parse_number_as_bool},
+    error::{Error, parse_number_as_bool},
     webrtc::{bool_to_number_str, push},
 };
 
@@ -17,7 +17,7 @@ pub struct WebRTCSessionAnswer {
 }
 
 impl FromStr for WebRTCSessionAnswer {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let session = Session::parse(s.as_bytes())?;
@@ -27,7 +27,7 @@ impl FromStr for WebRTCSessionAnswer {
 }
 
 impl WebRTCSessionAnswer {
-    pub fn from_sdp(session: &Session) -> Result<Self, MoonlightError> {
+    pub fn from_sdp(session: &Session) -> Result<Self, Error> {
         let mut app_name = None;
         let mut microphone = false;
 

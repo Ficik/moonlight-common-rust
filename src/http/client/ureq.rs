@@ -9,7 +9,7 @@ use ureq::{
 };
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientInfo, Endpoint, TextResponse,
         client::{
@@ -21,7 +21,7 @@ use crate::{
 
 pub type UreqClient = Config;
 
-impl From<ureq::Error> for MoonlightError {
+impl From<ureq::Error> for Error {
     fn from(value: ureq::Error) -> Self {
         use ureq::Error;
 
@@ -42,14 +42,14 @@ impl From<ureq::Error> for MoonlightError {
 }
 
 impl RequestClient for UreqClient {
-    fn with_defaults() -> Result<Self, MoonlightError> {
+    fn with_defaults() -> Result<Self, Error> {
         let config = Agent::config_builder()
             .timeout_global(Some(DEFAULT_TIMEOUT))
             .build();
 
         Ok(config)
     }
-    fn with_defaults_long_timeout() -> Result<Self, MoonlightError> {
+    fn with_defaults_long_timeout() -> Result<Self, Error> {
         let config = Agent::config_builder()
             .timeout_global(Some(DEFAULT_LONG_TIMEOUT))
             .build();
@@ -69,7 +69,7 @@ impl RequestClient for UreqClient {
         client_private_key: &Pem,
         client_certificate: &Pem,
         server_certificate: &Pem,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         let client_certificate = Certificate::from_der(client_certificate.contents()).to_owned();
         let client_private_key = PrivateKey::from_pem(client_private_key.to_string().as_bytes())?;
 
@@ -100,7 +100,7 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Response: TextResponse,
@@ -128,7 +128,7 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Response: TextResponse,
@@ -156,7 +156,7 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, MoonlightError>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint<Response = Vec<u8>>,
     {

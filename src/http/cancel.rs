@@ -4,7 +4,7 @@ use std::str::FromStr;
 use roxmltree::Document;
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -37,7 +37,7 @@ impl Request for CancelRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -61,7 +61,7 @@ impl TextResponse for CancelResponse {
 }
 
 impl FromStr for CancelResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;

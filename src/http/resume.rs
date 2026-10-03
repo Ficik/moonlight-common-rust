@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use roxmltree::Document;
 
 use crate::{
-    error::{MoonlightError, parse_u32},
+    error::{Error, parse_u32},
     http::{
         Endpoint, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -66,7 +66,7 @@ impl TextResponse for ResumeResponse {
 }
 
 impl FromStr for ResumeResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;
@@ -74,7 +74,7 @@ impl FromStr for ResumeResponse {
 
         let rtsp_session_url = match parse_xml_child_text(root, "sessionUrl0") {
             Ok(value) => Some(value.to_string()),
-            Err(MoonlightError::MissingAttribute { .. }) => None,
+            Err(Error::MissingAttribute { .. }) => None,
             Err(err) => {
                 return Err(err);
             }

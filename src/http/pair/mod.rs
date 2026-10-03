@@ -14,7 +14,7 @@ use roxmltree::Node;
 
 use crate::{
     ServerVersion,
-    error::{MoonlightError, parse_i32},
+    error::{Error, parse_i32},
     http::{
         ClientIdentifier, ClientSecret, Endpoint, QueryBuilder, QueryBuilderError, QueryMap,
         Request, ServerIdentifier, TextResponse,
@@ -47,7 +47,7 @@ pub struct PairPin {
 }
 
 impl PairPin {
-    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, MoonlightError>
+    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Error>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -170,7 +170,7 @@ impl Request for PairRequest {
         }
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -188,7 +188,7 @@ impl Request for PairRequest {
         } else if phrase == Some("pairchallenge") {
             PairPhase5Request::from_query_params(query_map).map(Self::Phase5)
         } else {
-            Err(MoonlightError::InvalidValue {
+            Err(Error::InvalidValue {
                 context: "http query: pair (no phase)",
                 expected: "any important attribute that relates to the phase",
                 got: phrase.unwrap_or("none").to_string(),
@@ -218,7 +218,7 @@ impl TextResponse for PairResponse {
 }
 
 impl FromStr for PairResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.contains("plaincert") {
@@ -236,7 +236,7 @@ impl FromStr for PairResponse {
 fn parse_xml_child_paired<'doc, 'node>(
     context: &'static str,
     list_node: Node<'node, 'doc>,
-) -> Result<bool, MoonlightError> {
+) -> Result<bool, Error> {
     let paired: i32 = parse_i32(
         context,
         "paired",
@@ -271,7 +271,7 @@ fn hash_algorithm_for_server(server_version: ServerVersion) -> HashAlgorithm {
 }
 
 pub trait PairingCryptoBackend {
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError>;
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Error>;
 
     /// Hashes data into the output buffer provided.
     fn hash(
@@ -279,25 +279,25 @@ pub trait PairingCryptoBackend {
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), MoonlightError>;
+    ) -> Result<(), Error>;
 
     /// Puts random bytes into data.
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError>;
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Error>;
 
     /// Encrypts plaintext using aes 128 bit ecb with the provided key.
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError>;
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error>;
 
     /// Decrypts plaintext using aes 128 bit ecb with the provided key.
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError>;
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error>;
 
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError>;
+    ) -> Result<Vec<u8>, Error>;
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError>;
+    ) -> Result<Vec<u8>, Error>;
 
     /// Verifies the signature using sha256
     fn verify_signature(
@@ -305,26 +305,26 @@ pub trait PairingCryptoBackend {
         server_secret: &[u8],
         server_signature: &[u8],
         server_certificate: &ServerIdentifier,
-    ) -> Result<bool, MoonlightError>;
+    ) -> Result<bool, Error>;
 
     /// Signs the data using sha256
     fn sign_data(&self, private_key: &ClientSecret, data: &[u8])
-    -> Result<Vec<u8>, MoonlightError>;
+    -> Result<Vec<u8>, Error>;
 }
 
 impl<T> PairingCryptoBackend for Arc<T>
 where
     T: PairingCryptoBackend,
 {
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Error> {
         T::generate_client_identity(self)
     }
 
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         T::decrypt_aes(self, key, ciphertext)
     }
 
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         T::encrypt_aes(self, key, plaintext)
     }
 
@@ -333,11 +333,11 @@ where
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         T::hash(self, algorithm, data, output)
     }
 
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError> {
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Error> {
         T::random_bytes(self, data)
     }
 
@@ -345,20 +345,20 @@ where
         &self,
         private_key: &ClientSecret,
         data: &[u8],
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         T::sign_data(self, private_key, data)
     }
 
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         T::client_signature(self, client_certificate)
     }
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         T::server_signature(self, server_certificate)
     }
 
@@ -367,7 +367,7 @@ where
         server_secret: &[u8],
         server_signature: &[u8],
         server_cert: &ServerIdentifier,
-    ) -> Result<bool, MoonlightError> {
+    ) -> Result<bool, Error> {
         T::verify_signature(self, server_secret, server_signature, server_cert)
     }
 }

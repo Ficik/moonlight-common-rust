@@ -7,7 +7,7 @@ use roxmltree::Document;
 
 use crate::{
     AppId,
-    error::{MoonlightError, parse_error, parse_i32, parse_number_as_bool, parse_u32},
+    error::{Error, parse_error, parse_i32, parse_number_as_bool, parse_u32},
     http::{
         Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{
@@ -195,7 +195,7 @@ impl Request for ClientStreamRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -210,7 +210,7 @@ impl Request for ClientStreamRequest {
             "mode.width",
             mode_split
                 .next()
-                .ok_or_else(|| MoonlightError::InvalidValue {
+                .ok_or_else(|| Error::InvalidValue {
                     context: ERROR_CONTEXT,
                     expected: "WIDTHxHEIGHTxFPS",
                     got: mode.to_string(),
@@ -221,7 +221,7 @@ impl Request for ClientStreamRequest {
             "mode.height",
             mode_split
                 .next()
-                .ok_or_else(|| MoonlightError::InvalidValue {
+                .ok_or_else(|| Error::InvalidValue {
                     context: ERROR_CONTEXT,
                     expected: "WIDTHxHEIGHTxFPS",
                     got: mode.to_string(),
@@ -232,7 +232,7 @@ impl Request for ClientStreamRequest {
             "mode.fps",
             mode_split
                 .next()
-                .ok_or_else(|| MoonlightError::InvalidValue {
+                .ok_or_else(|| Error::InvalidValue {
                     context: ERROR_CONTEXT,
                     expected: "WIDTHxHEIGHTxFPS",
                     got: mode.to_string(),
@@ -355,7 +355,7 @@ impl TextResponse for LaunchResponse {
 }
 
 impl FromStr for LaunchResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         const ERROR_CONTEXT: &str = "http xml: launch";
@@ -365,7 +365,7 @@ impl FromStr for LaunchResponse {
 
         let rtsp_session_url = match parse_xml_child_text(root, "sessionUrl0") {
             Ok(value) => Some(value.to_string()),
-            Err(MoonlightError::MissingAttribute { .. }) => None,
+            Err(Error::MissingAttribute { .. }) => None,
             Err(err) => {
                 return Err(err);
             }

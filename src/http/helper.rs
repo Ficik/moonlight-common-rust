@@ -3,25 +3,25 @@ use std::fmt::Write as _;
 
 use roxmltree::{Document, Node};
 
-use crate::error::{MoonlightError, parse_i32};
+use crate::error::{Error, parse_i32};
 
 const ERROR_CONTEXT: &str = "http xml";
 
 pub fn parse_xml_child_text<'doc, 'node>(
     list_node: Node<'node, 'doc>,
     name: &'static str,
-) -> Result<&'node str, MoonlightError>
+) -> Result<&'node str, Error>
 where
     'node: 'doc,
 {
     let node = list_node
         .children()
         .find(|node| node.tag_name().name() == name)
-        .ok_or(MoonlightError::MissingAttribute {
+        .ok_or(Error::MissingAttribute {
             context: ERROR_CONTEXT,
             attribute: name,
         })?;
-    let content = node.text().ok_or(MoonlightError::InvalidValue {
+    let content = node.text().ok_or(Error::InvalidValue {
         context: ERROR_CONTEXT,
         expected: "a text node",
         got: format!("{:?}", node),
@@ -30,12 +30,12 @@ where
     Ok(content)
 }
 
-pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, MoonlightError> {
+pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>, Error> {
     let root = doc
         .root()
         .children()
         .find(|node| node.tag_name().name() == "root")
-        .ok_or(MoonlightError::InvalidValue {
+        .ok_or(Error::InvalidValue {
             context: ERROR_CONTEXT,
             expected: "a xml root element",
             got: format!("{:?}", doc),
@@ -46,14 +46,14 @@ pub fn parse_xml_root_node<'doc>(doc: &'doc Document) -> Result<Node<'doc, 'doc>
         ERROR_CONTEXT,
         "status_code",
         root.attribute("status_code")
-            .ok_or(MoonlightError::MissingAttribute {
+            .ok_or(Error::MissingAttribute {
                 context: ERROR_CONTEXT,
                 attribute: "status_code",
             })?,
     )?;
 
     if status_code / 100 != 2 {
-        return Err(MoonlightError::StatusCode {
+        return Err(Error::StatusCode {
             code: status_code,
             reason: root
                 .attribute("status_message")

@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientIdentifier, ClientSecret,
         pair::{HashAlgorithm, PairingCryptoBackend},
@@ -12,7 +12,7 @@ use crate::{
 #[error("the cryptography operations have been disabled")]
 pub struct CryptoBackendDisabledError;
 
-impl From<CryptoBackendDisabledError> for MoonlightError {
+impl From<CryptoBackendDisabledError> for Error {
     fn from(value: CryptoBackendDisabledError) -> Self {
         Self::Other(value.into())
     }
@@ -22,7 +22,7 @@ impl From<CryptoBackendDisabledError> for MoonlightError {
 pub struct DisabledCryptoBackend;
 
 impl PairingCryptoBackend for DisabledCryptoBackend {
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -31,33 +31,33 @@ impl PairingCryptoBackend for DisabledCryptoBackend {
         _algorithm: HashAlgorithm,
         _data: &[u8],
         _output: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
-    fn random_bytes(&self, _data: &mut [u8]) -> Result<(), MoonlightError> {
+    fn random_bytes(&self, _data: &mut [u8]) -> Result<(), Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
-    fn encrypt_aes(&self, _key: &[u8], _plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn encrypt_aes(&self, _key: &[u8], _plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
-    fn decrypt_aes(&self, _key: &[u8], _ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn decrypt_aes(&self, _key: &[u8], _ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
     fn client_signature(
         &self,
         _client_certificate: &crate::http::ClientIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
     fn server_signature(
         &self,
         _server_certificate: &crate::http::ServerIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -66,7 +66,7 @@ impl PairingCryptoBackend for DisabledCryptoBackend {
         _server_secret: &[u8],
         _server_signature: &[u8],
         _server_certificate: &crate::http::ServerIdentifier,
-    ) -> Result<bool, MoonlightError> {
+    ) -> Result<bool, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -74,7 +74,7 @@ impl PairingCryptoBackend for DisabledCryptoBackend {
         &self,
         _private_key: &crate::http::ClientSecret,
         _data: &[u8],
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 }
@@ -91,7 +91,7 @@ impl CryptoBackend for DisabledCryptoBackend {
         _input: &[u8],
         _output: &mut [u8],
         _tag: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -102,7 +102,7 @@ impl CryptoBackend for DisabledCryptoBackend {
         _input: &[u8],
         _tag: &[u8],
         _output: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -112,7 +112,7 @@ impl CryptoBackend for DisabledCryptoBackend {
         _iv: &[u8],
         _input: &[u8],
         _output: &mut [u8],
-    ) -> Result<usize, MoonlightError> {
+    ) -> Result<usize, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 
@@ -122,7 +122,7 @@ impl CryptoBackend for DisabledCryptoBackend {
         _iv: &[u8],
         _input: &[u8],
         _output: &mut [u8],
-    ) -> Result<usize, MoonlightError> {
+    ) -> Result<usize, Error> {
         Err(CryptoBackendDisabledError.into())
     }
 }

@@ -15,7 +15,7 @@ use tracing::{Level, debug, info, instrument, trace};
 
 use crate::{
     crypto::disabled::DisabledCryptoBackend,
-    error::MoonlightError,
+    error::Error,
     stream::{
         SunshineEncryption,
         audio::{AudioFrame, OpusMultistreamConfig},
@@ -109,7 +109,7 @@ impl AudioStream {
         }
     }
 
-    fn poll_depayloader(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn poll_depayloader(&mut self, now: Instant) -> Result<(), Error> {
         while let Some(frame) = self.depayloader.poll_frame()? {
             self.last_frame = now;
             self.dropped_frames = false;
@@ -178,7 +178,7 @@ impl UdpStream for AudioStream {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         if self.addr != addr {
             trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
             return Ok(());
@@ -197,7 +197,7 @@ impl UdpStream for AudioStream {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), Error> {
         self.ping_sender.handle_timeout(now);
 
         if self.last_frame + MAXIMUM_SAMPLE_WAIT < now {

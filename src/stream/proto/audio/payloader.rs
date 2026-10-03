@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     crypto::disabled::DisabledCryptoBackend,
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesIv, AesKey,
         proto::{
@@ -35,7 +35,7 @@ pub enum AudioPayloaderError {
     InvalidFrameSize,
 }
 
-impl From<AudioPayloaderError> for MoonlightError {
+impl From<AudioPayloaderError> for Error {
     fn from(value: AudioPayloaderError) -> Self {
         Self::Other(value.into())
     }
@@ -90,7 +90,7 @@ where
     }
 
     /// Pushes one opus frame to the payloader.
-    pub fn push_frame(&mut self, timestamp: u32, frame: &[u8]) -> Result<(), MoonlightError> {
+    pub fn push_frame(&mut self, timestamp: u32, frame: &[u8]) -> Result<(), Error> {
         if frame.len() != self.frame_len {
             return Err(AudioPayloaderError::InvalidFrameSize.into());
         }
@@ -257,7 +257,7 @@ where
         RtpAudioHeader::SIZE + AudioFecHeader::SIZE + payload_len
     }
 
-    fn dequeue_packet(&mut self) -> Result<Vec<u8>, MoonlightError> {
+    fn dequeue_packet(&mut self) -> Result<Vec<u8>, Error> {
         if let Some(mut vec) = self.unused.pop() {
             vec.resize(self.safe_packet_size(), 0);
             return Ok(vec);

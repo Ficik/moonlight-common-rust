@@ -8,7 +8,7 @@ use tracing::info;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientInfo, DEFAULT_UNIQUE_ID, QueryBuilder, QueryBuilderError, QueryMap, QueryParam,
         Request, TextResponse,
@@ -45,11 +45,11 @@ impl QueryMap for TestQuery {
     fn has(&self, param: &str) -> bool {
         self.params.contains_key(param)
     }
-    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, MoonlightError> {
+    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, Error> {
         self.params
             .get(param)
             .map(Cow::from)
-            .ok_or(MoonlightError::MissingAttribute {
+            .ok_or(Error::MissingAttribute {
                 context: "query parameter test",
                 attribute: param,
             })
@@ -362,7 +362,7 @@ fn response_host_info_auth_fail() {
 
     assert!(matches!(
         ServerInfoResponse::from_str(&text).unwrap_err(),
-        MoonlightError::StatusCode {
+        Error::StatusCode {
             code: 401,
             reason
         } if reason == "The client is not authorized. Certificate verification failed."
@@ -653,7 +653,7 @@ fn response_launch_fail() {
 
     assert!(matches!(
         LaunchResponse::from_str(&response).unwrap_err(),
-        MoonlightError::StatusCode { code: -1, reason } if reason == "Failed to start the specified application"
+        Error::StatusCode { code: -1, reason } if reason == "Failed to start the specified application"
     ),);
 }
 

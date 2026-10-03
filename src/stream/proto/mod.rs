@@ -16,7 +16,7 @@ use tracing::{Level, debug, info, instrument, warn};
 use crate::{
     ServerVersion,
     crypto::disabled::DisabledCryptoBackend,
-    error::MoonlightError,
+    error::Error,
     stream::{
         EncryptionFlags, HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         RawHostFeatures, StreamingConfig,
@@ -96,7 +96,7 @@ pub enum MoonlightStreamSetupError {
     },
 }
 
-impl From<MoonlightStreamSetupError> for MoonlightError {
+impl From<MoonlightStreamSetupError> for Error {
     fn from(value: MoonlightStreamSetupError) -> Self {
         Self::Other(value.into())
     }
@@ -212,7 +212,7 @@ impl MoonlightStreamSetup {
         config: MoonlightStreamConfig,
         settings: MoonlightStreamSettings,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         Self::new(
             now,
             config,
@@ -240,7 +240,7 @@ impl MoonlightStreamSetup {
         mut settings: MoonlightStreamSettings,
         crypto_backend: DynCryptoBackend,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         // https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/RtspConnection.c#L976-L994
         #[allow(clippy::wildcard_in_or_patterns)]
         let client_version = match config.version.major {
@@ -325,7 +325,7 @@ impl MoonlightStreamSetup {
         Ok(this)
     }
 
-    pub fn poll_output(&mut self) -> Result<MoonlightStreamSetupOutput, MoonlightError> {
+    pub fn poll_output(&mut self) -> Result<MoonlightStreamSetupOutput, Error> {
         let mut timeout;
         loop {
             match self.rtsp.poll_output()? {
@@ -795,7 +795,7 @@ impl MoonlightStreamSetup {
     }
 
     #[instrument(level = Level::TRACE, skip(self))]
-    pub fn handle_input(&mut self, input: MoonlightStreamInput) -> Result<(), MoonlightError> {
+    pub fn handle_input(&mut self, input: MoonlightStreamInput) -> Result<(), Error> {
         let _last_now = self.last_now;
         // TODO: all sans io structs MUST be updated via timeout even if it isn't their event
 

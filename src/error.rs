@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum MoonlightError {
+pub enum Error {
     // --- Moonlight ---
     // -- Session Configuration
     #[error("hdr not supported")]
@@ -109,7 +109,7 @@ pub enum MoonlightError {
     List(ErrorList),
 }
 
-impl MoonlightError {
+impl Error {
     pub(crate) fn from_thread_panic(error: Box<dyn Any + Send>) -> Self {
         let message = if let Some(message) = error.downcast_ref::<&str>() {
             (*message).to_owned()
@@ -119,7 +119,7 @@ impl MoonlightError {
             "unknown panic payload".to_owned()
         };
 
-        MoonlightError::ThreadPanic(message)
+        Error::ThreadPanic(message)
     }
 
     pub(crate) fn other(error: impl std::error::Error + Send + Sync + 'static) -> Self {
@@ -127,13 +127,13 @@ impl MoonlightError {
     }
 }
 
-impl<T> From<std::sync::PoisonError<T>> for MoonlightError {
+impl<T> From<std::sync::PoisonError<T>> for Error {
     fn from(_value: std::sync::PoisonError<T>) -> Self {
         Self::LockPoisoned
     }
 }
 
-impl From<ErrorList> for MoonlightError {
+impl From<ErrorList> for Error {
     fn from(value: ErrorList) -> Self {
         // try to flatten the list if possible
         if value.0.len() == 1 {
@@ -149,9 +149,9 @@ impl From<ErrorList> for MoonlightError {
 }
 
 #[derive(Debug)]
-pub struct ErrorList(Vec<MoonlightError>);
+pub struct ErrorList(Vec<Error>);
 
-impl From<ErrorList> for Vec<MoonlightError> {
+impl From<ErrorList> for Vec<Error> {
     fn from(value: ErrorList) -> Self {
         value.0
     }
@@ -161,10 +161,10 @@ impl From<ErrorList> for Vec<MoonlightError> {
 #[error("the error list must be non empty")]
 pub struct ErrorListEmpty;
 
-impl TryFrom<Vec<MoonlightError>> for ErrorList {
+impl TryFrom<Vec<Error>> for ErrorList {
     type Error = ErrorListEmpty;
 
-    fn try_from(value: Vec<MoonlightError>) -> Result<Self, Self::Error> {
+    fn try_from(value: Vec<Error>) -> Result<Self, Self::Error> {
         if value.is_empty() {
             return Err(ErrorListEmpty);
         }
@@ -192,16 +192,16 @@ pub(crate) fn parse_error(
     attribute: impl Into<Option<&'static str>>,
     expected: &'static str,
     value: String,
-) -> MoonlightError {
+) -> Error {
     if let Some(attribute) = attribute.into() {
-        MoonlightError::InvalidAttribute {
+        Error::InvalidAttribute {
             context,
             attribute,
             expected,
             got: value,
         }
     } else {
-        MoonlightError::InvalidValue {
+        Error::InvalidValue {
             context,
             expected,
             got: value,
@@ -213,7 +213,7 @@ pub(crate) fn parse_u32(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<u32, MoonlightError> {
+) -> Result<u32, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -227,7 +227,7 @@ pub(crate) fn parse_u16(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<u16, MoonlightError> {
+) -> Result<u16, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -242,7 +242,7 @@ pub(crate) fn parse_i32(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<i32, MoonlightError> {
+) -> Result<i32, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -257,11 +257,11 @@ pub(crate) fn parse_number_as_bool(
     context: &'static str,
     attribute: &'static str,
     value: &str,
-) -> Result<bool, MoonlightError> {
+) -> Result<bool, Error> {
     match value {
         "0" => Ok(false),
         "1" => Ok(true),
-        _ => Err(MoonlightError::InvalidAttribute {
+        _ => Err(Error::InvalidAttribute {
             context,
             attribute,
             expected: "0 or 1",
@@ -274,7 +274,7 @@ pub(crate) fn parse_ipv4(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<Ipv4Addr, MoonlightError> {
+) -> Result<Ipv4Addr, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -289,7 +289,7 @@ pub(crate) fn parse_ipv6(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<Ipv6Addr, MoonlightError> {
+) -> Result<Ipv6Addr, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -304,7 +304,7 @@ pub(crate) fn parse_mac(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<MacAddress, MoonlightError> {
+) -> Result<MacAddress, Error> {
     value
         .parse()
         .map_err(|_| parse_error(context, attribute, "a valid mac address", value.to_string()))
@@ -314,7 +314,7 @@ pub(crate) fn parse_uuid(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<Uuid, MoonlightError> {
+) -> Result<Uuid, Error> {
     value
         .parse()
         .map_err(|_| parse_error(context, attribute, "a valid uuid", value.to_string()))
@@ -324,7 +324,7 @@ pub(crate) fn parse_server_version(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<ServerVersion, MoonlightError> {
+) -> Result<ServerVersion, Error> {
     value.parse().map_err(|_| {
         parse_error(
             context,
@@ -339,7 +339,7 @@ pub(crate) fn parse_hex(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<Vec<u8>, MoonlightError> {
+) -> Result<Vec<u8>, Error> {
     hex::decode(value)
         .map_err(|_| parse_error(context, attribute, "valid hex bytes", value.to_string()))
 }
@@ -348,7 +348,7 @@ pub(crate) fn parse_pem(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<Pem, MoonlightError> {
+) -> Result<Pem, Error> {
     Pem::from_str(value)
         .map_err(|_| parse_error(context, attribute, "a valid pem string", value.to_string()))
 }
@@ -357,7 +357,7 @@ pub(crate) fn parse_server_state(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
     value: &str,
-) -> Result<ServerState, MoonlightError> {
+) -> Result<ServerState, Error> {
     ServerState::from_str(value).map_err(|_| {
         parse_error(
             context,

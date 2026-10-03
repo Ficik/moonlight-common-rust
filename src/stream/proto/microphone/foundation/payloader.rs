@@ -3,7 +3,7 @@ use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         SunshineEncryption,
         proto::{
@@ -23,7 +23,7 @@ pub enum FoundationMicPayloaderError {
     PacketTooLarge,
 }
 
-impl From<FoundationMicPayloaderError> for MoonlightError {
+impl From<FoundationMicPayloaderError> for Error {
     fn from(value: FoundationMicPayloaderError) -> Self {
         Self::Other(value.into())
     }
@@ -57,7 +57,7 @@ impl FoundationMicPayloader {
         }
     }
 
-    pub fn push_frame(&mut self, timestamp: Duration, frame: &[u8]) -> Result<(), MoonlightError> {
+    pub fn push_frame(&mut self, timestamp: Duration, frame: &[u8]) -> Result<(), Error> {
         let safe_len = if self.config.encryption.is_some() {
             FoundationMicHeader::SIZE + round_to_pkcs7_safe_len(frame.len())
         } else {

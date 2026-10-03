@@ -22,14 +22,14 @@ use pem::Pem;
 use tracing::{Level, instrument, trace};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientIdentifier, ClientSecret, ServerIdentifier,
         pair::{HashAlgorithm, PairingCryptoBackend},
     },
 };
 
-impl From<ErrorStack> for MoonlightError {
+impl From<ErrorStack> for Error {
     fn from(value: ErrorStack) -> Self {
         // TODO: check for verification failed
         Self::Other(value.into())
@@ -47,7 +47,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
         algorithm: HashAlgorithm,
         data: &[u8],
         output: &mut [u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         match algorithm {
             HashAlgorithm::Sha1 => {
                 let digest = sha1(data);
@@ -66,7 +66,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, data), ret, err))]
-    fn random_bytes(&self, data: &mut [u8]) -> Result<(), MoonlightError> {
+    fn random_bytes(&self, data: &mut [u8]) -> Result<(), Error> {
         rand_bytes(data)?;
 
         trace!(data = ?data);
@@ -76,7 +76,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), MoonlightError> {
+    fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Error> {
         let rsa = Rsa::generate(2048)?;
         let key = PKey::from_rsa(rsa)?;
 
@@ -117,7 +117,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn encrypt_aes(&self, key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         let mut cipher_ctx = CipherCtx::new()?;
 
         cipher_ctx.encrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
@@ -130,7 +130,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, MoonlightError> {
+    fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         let mut cipher_ctx = CipherCtx::new()?;
 
         cipher_ctx.decrypt_init(Some(Cipher::aes_128_ecb()), Some(key), None)?;
@@ -147,7 +147,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
     fn client_signature(
         &self,
         client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         let client_certificate = X509::from_der(client_certificate.to_pem().contents())?;
 
         Ok(client_certificate.signature().as_slice().to_vec())
@@ -158,7 +158,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
     fn server_signature(
         &self,
         server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         let server_certificate = X509::from_der(server_certificate.to_pem().contents())?;
 
         Ok(server_certificate.signature().as_slice().to_vec())
@@ -171,7 +171,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
         server_secret: &[u8],
         server_signature: &[u8],
         server_identifier: &ServerIdentifier,
-    ) -> Result<bool, MoonlightError> {
+    ) -> Result<bool, Error> {
         let server_certificate = X509::from_der(server_identifier.to_pem().contents())?;
 
         let public_key = server_certificate.public_key()?;
@@ -191,7 +191,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
         &self,
         private_key: &ClientSecret,
         data: &[u8],
-    ) -> Result<Vec<u8>, MoonlightError> {
+    ) -> Result<Vec<u8>, Error> {
         let private_key = PKey::<Private>::private_key_from_der(private_key.to_pem().contents())?;
 
         let mut md_ctx = MdCtx::new()?;
@@ -211,7 +211,7 @@ mod proto {
     use openssl::symm::{self, Crypter, Mode};
 
     use crate::{
-        crypto::openssl::OpenSSLCryptoBackend, error::MoonlightError,
+        crypto::openssl::OpenSSLCryptoBackend, error::Error,
         stream::proto::crypto::CryptoBackend,
     };
 
@@ -223,7 +223,7 @@ mod proto {
             input: &[u8],
             output: &mut [u8],
             tag: &mut [u8],
-        ) -> Result<(), MoonlightError> {
+        ) -> Result<(), Error> {
             let cipher = symm::Cipher::aes_128_gcm();
 
             let mut crypter = Crypter::new(cipher, Mode::Encrypt, key, Some(iv))?;
@@ -244,7 +244,7 @@ mod proto {
             input: &[u8],
             tag: &[u8],
             output: &mut [u8],
-        ) -> Result<(), MoonlightError> {
+        ) -> Result<(), Error> {
             let cipher = symm::Cipher::aes_128_gcm();
 
             let mut crypter = Crypter::new(cipher, Mode::Decrypt, key, Some(iv))?;
@@ -265,7 +265,7 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, MoonlightError> {
+        ) -> Result<usize, Error> {
             let cipher = symm::Cipher::aes_128_cbc();
 
             // encrypt
@@ -284,7 +284,7 @@ mod proto {
             iv: &[u8],
             input: &[u8],
             output: &mut [u8],
-        ) -> Result<usize, MoonlightError> {
+        ) -> Result<usize, Error> {
             let cipher = symm::Cipher::aes_128_cbc();
 
             // decrypt

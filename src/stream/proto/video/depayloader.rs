@@ -7,7 +7,7 @@ use tracing::{debug, debug_span, instrument, trace, warn};
 
 use crate::{
     ServerVersion,
-    error::MoonlightError,
+    error::Error,
     stream::{
         proto::{
             fec::ArrayShard,
@@ -32,7 +32,7 @@ pub enum VideoDepayloaderError {
     ReedSolomon(#[from] fec_rs::Error),
 }
 
-impl From<VideoDepayloaderError> for MoonlightError {
+impl From<VideoDepayloaderError> for Error {
     fn from(value: VideoDepayloaderError) -> Self {
         Self::Other(value.into())
     }

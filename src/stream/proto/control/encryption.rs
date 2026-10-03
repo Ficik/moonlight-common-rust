@@ -2,7 +2,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesKey,
         proto::{
@@ -32,7 +32,7 @@ pub enum ControlEncryptionError {
     EncryptionHeaderLengthTooSmall,
 }
 
-impl From<ControlEncryptionError> for MoonlightError {
+impl From<ControlEncryptionError> for Error {
     fn from(value: ControlEncryptionError) -> Self {
         Self::Other(value.into())
     }
@@ -45,7 +45,7 @@ fn encrypt_control_packet_into<Crypto>(
     iv: &[u8],
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -83,7 +83,7 @@ fn decrypt_control_packet_into<Crypto>(
     generate_iv: impl FnOnce(u32, &mut [u8; 16]) -> usize,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -115,7 +115,7 @@ where
     let encrypted_payload = &encrypted_packet[EncryptedControlHeader::SIZE..];
     let expected_encrypted_payload_len = encrypted_header
         .payload_size()
-        .ok_or::<MoonlightError>(ControlEncryptionError::EncryptionHeaderLengthTooSmall.into())?;
+        .ok_or::<Error>(ControlEncryptionError::EncryptionHeaderLengthTooSmall.into())?;
 
     if encrypted_payload.len() != expected_encrypted_payload_len as usize {
         return Err(ControlEncryptionError::EncryptionHeaderLengthMismatch.into());
@@ -143,7 +143,7 @@ pub fn encrypt_clientbound_control_packet_into<Crypto>(
     sequence_number: u32,
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -171,7 +171,7 @@ pub fn decrypt_clientbound_control_packet_into<Crypto>(
     aes_key: AesKey,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -196,7 +196,7 @@ pub fn encrypt_serverbound_control_packet_into<Crypto>(
     sequence_number: u32,
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -224,7 +224,7 @@ pub fn decrypt_serverbound_control_packet_into<Crypto>(
     aes_key: AesKey,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, MoonlightError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {

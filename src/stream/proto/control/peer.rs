@@ -10,7 +10,7 @@ use thiserror::Error;
 use tracing::{Level, debug, instrument, trace, warn};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesKey,
         control::EstimatedRttInfo,
@@ -228,7 +228,7 @@ impl ControlHost {
         &mut self,
         addr: SocketAddr,
         config: ControlConnectConfig,
-    ) -> Result<ControlPeerId, MoonlightError> {
+    ) -> Result<ControlPeerId, Error> {
         let id = self.host.connect(
             addr,
             config.channel_count,
@@ -277,7 +277,7 @@ impl ControlHost {
         channel_id: EnetChannel,
         kind: PacketKind,
         packet: ControlPacket,
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         // Avoid spam from some packets
         if matches!(
             packet,
@@ -305,7 +305,7 @@ impl ControlHost {
         let data = self
             .peer_data
             .get_mut(&id)
-            .ok_or::<MoonlightError>(PacketSendError::PeerNotConfigured.into())?;
+            .ok_or::<Error>(PacketSendError::PeerNotConfigured.into())?;
 
         if packet.ty().direction() != data.config.role.outgoing_direction() {
             warn!(
@@ -399,7 +399,7 @@ impl ControlHost {
     }
 
     #[instrument(level = Level::DEBUG, skip(self))]
-    pub fn disconnect(&mut self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
+    pub fn disconnect(&mut self, id: ControlPeerId, data: u32) -> Result<(), Error> {
         self.host.disconnect(id.0, data)?;
 
         self.host.service();
@@ -407,14 +407,14 @@ impl ControlHost {
     }
 
     #[instrument(level = Level::DEBUG, skip(self))]
-    pub fn disconnect_now(&mut self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
+    pub fn disconnect_now(&mut self, id: ControlPeerId, data: u32) -> Result<(), Error> {
         self.host.disconnect_now(id.0, data)?;
 
         self.host.service();
         Ok(())
     }
 
-    fn handle_events(&mut self) -> Result<(), MoonlightError> {
+    fn handle_events(&mut self) -> Result<(), Error> {
         while let Some(event) = self.host.poll_event() {
             trace!(event = ?event, "enet event");
 
@@ -546,14 +546,14 @@ impl UdpStream for ControlHost {
         now: Instant,
         addr: SocketAddr,
         data: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         self.host.handle_receive(now, addr, data);
 
         self.handle_events()?;
         Ok(())
     }
 
-    fn handle_timeout(&mut self, now: Instant) -> Result<(), MoonlightError> {
+    fn handle_timeout(&mut self, now: Instant) -> Result<(), Error> {
         self.host.handle_timeout(now);
 
         self.handle_events()?;

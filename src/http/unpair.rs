@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{Endpoint, QueryBuilderError, QueryMap, Request, TextResponse},
 };
 
@@ -36,7 +36,7 @@ impl Request for UnpairRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -54,7 +54,7 @@ impl TextResponse for UnpairResponse {
 }
 
 impl FromStr for UnpairResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(_s: &str) -> Result<Self, Self::Err> {
         Ok(Self {})

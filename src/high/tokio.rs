@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
-    error::MoonlightError,
+    error::Error,
     http::{
         ClientIdentifier, ClientInfo, ClientSecret, DEFAULT_UNIQUE_ID, ServerIdentifier,
         app_list::{AppListEndpoint, AppListRequest, AppListResponse},
@@ -81,11 +81,7 @@ impl<Client> MoonlightHost<Client>
 where
     Client: RequestClient,
 {
-    pub fn new(
-        address: String,
-        http_port: u16,
-        unique_id: Option<String>,
-    ) -> Result<Self, MoonlightError> {
+    pub fn new(address: String, http_port: u16, unique_id: Option<String>) -> Result<Self, Error> {
         Ok(Self {
             client: Mutex::new(Client::with_defaults()?),
             client_unique_id: unique_id.unwrap_or_else(|| DEFAULT_UNIQUE_ID.to_string()),
@@ -106,7 +102,7 @@ where
         format!("{}:{}", self.address, self.http_port)
     }
 
-    pub async fn update(self: &MoonlightHost<Client>) -> Result<(), MoonlightError> {
+    pub async fn update(self: &MoonlightHost<Client>) -> Result<(), Error> {
         let mut cache_lock = self.cache.write().await;
         let client = self.client.lock().await;
 
@@ -162,7 +158,7 @@ where
     async fn server_info_priv<R>(
         &self,
         f: impl FnOnce(&ServerInfoResponse) -> R,
-    ) -> Result<R, MoonlightError> {
+    ) -> Result<R, Error> {
         let response = self.cache.read().await;
 
         if let Some(server_info) = &response.server_info {
@@ -180,63 +176,61 @@ where
         }
     }
 
-    pub async fn server_info(&self) -> Result<ServerInfoResponse, MoonlightError> {
+    pub async fn server_info(&self) -> Result<ServerInfoResponse, Error> {
         self.server_info_priv(|response| response.clone()).await
     }
 
-    pub async fn https_port(&self) -> Result<u16, MoonlightError> {
+    pub async fn https_port(&self) -> Result<u16, Error> {
         self.server_info_priv(|info| info.https_port).await
     }
 
     fn build_https_address(address: &str, https_port: u16) -> String {
         format!("{address}:{https_port}")
     }
-    pub async fn https_address(&self) -> Result<String, MoonlightError> {
+    pub async fn https_address(&self) -> Result<String, Error> {
         let https_port = self.https_port().await?;
         Ok(Self::build_https_address(&self.address, https_port))
     }
-    pub async fn external_port(&self) -> Result<Option<u16>, MoonlightError> {
+    pub async fn external_port(&self) -> Result<Option<u16>, Error> {
         self.server_info_priv(|info| info.external_port).await
     }
 
-    pub async fn host_name(&self) -> Result<String, MoonlightError> {
+    pub async fn host_name(&self) -> Result<String, Error> {
         self.server_info_priv(|info| info.host_name.clone()).await
     }
-    pub async fn version(&self) -> Result<ServerVersion, MoonlightError> {
+    pub async fn version(&self) -> Result<ServerVersion, Error> {
         self.server_info_priv(|info| info.app_version).await
     }
 
-    pub async fn gfe_version(&self) -> Result<String, MoonlightError> {
+    pub async fn gfe_version(&self) -> Result<String, Error> {
         self.server_info_priv(|info| info.gfe_version.clone()).await
     }
-    pub async fn unique_id(&self) -> Result<Uuid, MoonlightError> {
+    pub async fn unique_id(&self) -> Result<Uuid, Error> {
         self.server_info_priv(|info| info.unique_id).await
     }
 
     /// Returns None if unpaired
-    pub async fn mac(&self) -> Result<Option<MacAddress>, MoonlightError> {
+    pub async fn mac(&self) -> Result<Option<MacAddress>, Error> {
         self.server_info_priv(|info| info.mac).await
     }
-    pub async fn local_ip(&self) -> Result<Ipv4Addr, MoonlightError> {
+    pub async fn local_ip(&self) -> Result<Ipv4Addr, Error> {
         self.server_info_priv(|info| info.local_ip).await
     }
 
-    pub async fn current_game(&self) -> Result<u32, MoonlightError> {
+    pub async fn current_game(&self) -> Result<u32, Error> {
         self.server_info_priv(|info| info.current_game).await
     }
 
-    pub async fn state(&self) -> Result<ServerState, MoonlightError> {
+    pub async fn state(&self) -> Result<ServerState, Error> {
         self.server_info_priv(|info| info.state).await
     }
 
-    pub async fn max_luma_pixels_hevc(&self) -> Result<u32, MoonlightError> {
+    pub async fn max_luma_pixels_hevc(&self) -> Result<u32, Error> {
         self.server_info_priv(|info| info.max_luma_pixels_hevc)
             .await
     }
 
-    pub async fn server_codec_mode_support(
-        &self,
-    ) -> Result<ServerCodecModeSupport, MoonlightError> {
+    pub async fn server_codec_mode_support(&self) -> Result<ServerCodecModeSupport, Error> {
         self.server_info_priv(|info| info.server_codec_mode_support)
             .await
     }
@@ -246,7 +240,7 @@ where
         client_identifier: ClientIdentifier,
         client_secret: ClientSecret,
         server_identifier: ServerIdentifier,
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         let client = Client::with_certificates(
             &client_secret.to_pem(),
             &client_identifier.to_pem(),
@@ -282,15 +276,15 @@ where
         })
     }
 
-    pub async fn is_paired(&self) -> Result<bool, MoonlightError> {
+    pub async fn is_paired(&self) -> Result<bool, Error> {
         let cache = self.cache.read().await;
         Ok(cache.authenticated.is_some())
     }
-    async fn check_paired(&self) -> Result<(), MoonlightError> {
+    async fn check_paired(&self) -> Result<(), Error> {
         if self.is_paired().await? {
             Ok(())
         } else {
-            Err(MoonlightError::Unauthenticated)
+            Err(Error::Unauthenticated)
         }
     }
 
@@ -301,7 +295,7 @@ where
         device_name: String,
         pin: PairPin,
         crypto_provider: Crypto,
-    ) -> Result<(), MoonlightError>
+    ) -> Result<(), Error>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -368,7 +362,7 @@ where
         client_info: ClientInfo,
         pairing: &mut ClientPairing<Crypto>,
         client: &mut Client,
-    ) -> Result<(), MoonlightError>
+    ) -> Result<(), Error>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -423,7 +417,7 @@ where
     }
 
     /// Please see [UnpairEndpoint](crate::http::unpair::UnpairEndpoint) for more info about this function.
-    pub async fn unpair(&self) -> Result<(), MoonlightError> {
+    pub async fn unpair(&self) -> Result<(), Error> {
         self.check_paired().await?;
 
         let https_address = self.https_address().await?;
@@ -446,18 +440,18 @@ where
         Ok(())
     }
 
-    pub async fn apollo_permissions(&self) -> Result<Option<ApolloPermissions>, MoonlightError> {
+    pub async fn apollo_permissions(&self) -> Result<Option<ApolloPermissions>, Error> {
         self.check_paired().await?;
 
         self.server_info_priv(|info| info.apollo_permissions.clone())
             .await
     }
 
-    pub async fn app_list(&self) -> Result<Vec<App>, MoonlightError> {
+    pub async fn app_list(&self) -> Result<Vec<App>, Error> {
         let cache = self.cache.read().await;
 
         if cache.authenticated.is_none() {
-            return Err(MoonlightError::Unauthenticated);
+            return Err(Error::Unauthenticated);
         }
 
         if let Some(app_list) = &cache.app_list {
@@ -475,7 +469,7 @@ where
         }
     }
 
-    pub async fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, MoonlightError> {
+    pub async fn request_app_image(&self, app_id: AppId) -> Result<Vec<u8>, Error> {
         self.check_paired().await?;
 
         let https_address = self.https_address().await?;
@@ -512,7 +506,7 @@ where
         aes_key: AesKey,
         aes_iv: AesIv,
         launch_url_query_parameters: &str,
-    ) -> Result<MoonlightStreamConfig, MoonlightError> {
+    ) -> Result<MoonlightStreamConfig, Error> {
         // Clearing cache so we refresh and can see if there's a game -> launch or resume?
         self.update().await?;
 
@@ -579,7 +573,7 @@ where
         })
     }
 
-    pub async fn cancel(&self) -> Result<bool, MoonlightError> {
+    pub async fn cancel(&self) -> Result<bool, Error> {
         self.check_paired().await?;
 
         let https_hostport = self.https_address().await?;

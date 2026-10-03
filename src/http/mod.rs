@@ -8,9 +8,9 @@ use pem::Pem;
 use thiserror::Error;
 use uuid::{Uuid, fmt::Hyphenated};
 
-use crate::error::{MoonlightError, parse_uuid};
+use crate::error::{Error, parse_uuid};
 
-impl From<roxmltree::Error> for MoonlightError {
+impl From<roxmltree::Error> for Error {
     fn from(value: roxmltree::Error) -> Self {
         Self::Other(value.into())
     }
@@ -71,13 +71,13 @@ impl QueryBuilder for String {
 
 pub trait QueryMap {
     fn has(&self, param: &str) -> bool;
-    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, MoonlightError>;
+    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, Error>;
 }
 
 impl QueryMap for &str {
     // TODO: handle %20 and so on
 
-    fn get<'b>(&'b self, param: &'static str) -> Result<Cow<'b, str>, MoonlightError> {
+    fn get<'b>(&'b self, param: &'static str) -> Result<Cow<'b, str>, Error> {
         for pair in self.split('&') {
             let mut parts = pair.splitn(2, '=');
             let key = parts.next().unwrap_or("");
@@ -86,7 +86,7 @@ impl QueryMap for &str {
                 return Ok(Cow::Borrowed(value));
             }
         }
-        Err(MoonlightError::MissingAttribute {
+        Err(Error::MissingAttribute {
             context: "query parameter",
             attribute: param,
         })
@@ -134,12 +134,12 @@ pub trait Request: Sized {
     ) -> Result<(), QueryBuilderError>;
 
     /// Parse the query parameters of into this request type.
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap;
 }
 
-pub trait TextResponse: FromStr<Err = MoonlightError> + Debug {
+pub trait TextResponse: FromStr<Err = Error> + Debug {
     fn serialize_into(&self, body_writer: &mut impl fmt::Write) -> fmt::Result;
 }
 
@@ -186,7 +186,7 @@ impl Request for ClientInfo {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {

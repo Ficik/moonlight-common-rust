@@ -7,7 +7,7 @@ use tracing::{Level, debug, instrument, trace, warn};
 
 use crate::{
     crypto::disabled::DisabledCryptoBackend,
-    error::MoonlightError,
+    error::Error,
     stream::{
         AesKey,
         proto::{
@@ -45,7 +45,7 @@ pub enum RtspClientError {
     Close,
 }
 
-impl From<RtspClientError> for MoonlightError {
+impl From<RtspClientError> for Error {
     fn from(value: RtspClientError) -> Self {
         Self::Other(value.into())
     }
@@ -148,20 +148,20 @@ impl RtspClient {
         self.target
     }
 
-    pub fn send(&mut self, request: RtspRequest) -> Result<(), MoonlightError> {
+    pub fn send(&mut self, request: RtspRequest) -> Result<(), Error> {
         self.send_inner(request)?;
         self.expect_response = true;
 
         Ok(())
     }
     /// Send a [RtspRequest] without expecting any response.
-    pub fn send_no_response(&mut self, request: RtspRequest) -> Result<(), MoonlightError> {
+    pub fn send_no_response(&mut self, request: RtspRequest) -> Result<(), Error> {
         self.send_inner(request)?;
         self.expect_response = false;
 
         Ok(())
     }
-    fn send_inner(&mut self, request: RtspRequest) -> Result<(), MoonlightError> {
+    fn send_inner(&mut self, request: RtspRequest) -> Result<(), Error> {
         if self.transmit.is_some() || !matches!(self.state, State::WaitForSendRequest) {
             return Err(RtspClientError::AlreadySending.into());
         }
@@ -172,7 +172,7 @@ impl RtspClient {
         Ok(())
     }
 
-    pub fn handle_input(&mut self, input: RtspInput) -> Result<(), MoonlightError> {
+    pub fn handle_input(&mut self, input: RtspInput) -> Result<(), Error> {
         match input {
             RtspInput::Receive(data) => {
                 self.receive.extend_from_slice(data);
@@ -208,7 +208,7 @@ impl RtspClient {
                     // This response doesn't contain the body yet
                     let (header_len, mut response) =
                         RtspResponse::try_parse_header(text)?
-                            .ok_or::<MoonlightError>(RtspClientError::IncompleteResponse.into())?;
+                            .ok_or::<Error>(RtspClientError::IncompleteResponse.into())?;
 
                     // check if sequence number matches
                     if let Some((_, response_sequence_number)) = response
@@ -228,7 +228,7 @@ impl RtspClient {
                     }
 
                     if response.message.status_code / 100 != 2 {
-                        return Err(MoonlightError::StatusCode {
+                        return Err(Error::StatusCode {
                             code: response.message.status_code,
                             reason: if let Some(payload) = response.payload {
                                 format!("{} and {}", response.message.status_message, payload)
@@ -253,7 +253,7 @@ impl RtspClient {
         Ok(())
     }
 
-    pub fn poll_output(&mut self) -> Result<RtspOutput, MoonlightError> {
+    pub fn poll_output(&mut self) -> Result<RtspOutput, Error> {
         match &self.state {
             State::WaitForSendRequest => {
                 if self.transmit.is_some() {
@@ -293,7 +293,7 @@ impl RtspClient {
                 let data = if self.target.encrypted {
                     let aes_key = self
                         .aes_key
-                        .ok_or::<MoonlightError>(RtspClientError::MissingEncryptionKey.into())?;
+                        .ok_or::<Error>(RtspClientError::MissingEncryptionKey.into())?;
 
                     let mut encrypted = vec![0u8; RtspEncryptionHeader::SIZE + plaintext.len()];
 

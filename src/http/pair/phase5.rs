@@ -1,5 +1,5 @@
 use crate::{
-    error::MoonlightError,
+    error::Error,
     http::{QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request},
 };
 
@@ -29,7 +29,7 @@ impl Request for PairPhase5Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {

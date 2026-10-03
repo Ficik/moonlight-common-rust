@@ -6,7 +6,7 @@ use std::{
 
 use tracing::warn;
 
-use crate::error::{MoonlightError, parse_ipv4, parse_ipv6, parse_u16, parse_u32};
+use crate::error::{Error, parse_ipv4, parse_ipv6, parse_u16, parse_u32};
 
 pub mod client;
 pub mod server;
@@ -42,12 +42,12 @@ impl Display for SdpNetworkType {
 }
 
 impl FromStr for SdpNetworkType {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "IN" => Ok(Self::In),
-            _ => Err(MoonlightError::InvalidValue {
+            _ => Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a network type (e.g. IN)",
                 got: s.to_string(),
@@ -73,13 +73,13 @@ impl Display for SdpMediaType {
 }
 
 impl FromStr for SdpMediaType {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "video" => Ok(Self::Video),
             "audio" => Ok(Self::Audio),
-            _ => Err(MoonlightError::InvalidValue {
+            _ => Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a valid media type",
                 got: s.to_string(),
@@ -122,12 +122,12 @@ impl Display for SdpOrigin {
 }
 
 impl FromStr for SdpOrigin {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.split(" ");
         let Some(username) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a username in the origin line",
                 got: s.to_string(),
@@ -135,7 +135,7 @@ impl FromStr for SdpOrigin {
         };
 
         let Some(session_id_str) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a session id in the origin line",
                 got: s.to_string(),
@@ -144,7 +144,7 @@ impl FromStr for SdpOrigin {
         let session_id = parse_u32(ERROR_CONTEXT, None, session_id_str)?;
 
         let Some(session_version_str) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a session id in the origin line",
                 got: s.to_string(),
@@ -153,7 +153,7 @@ impl FromStr for SdpOrigin {
         let session_version = parse_u32(ERROR_CONTEXT, None, session_version_str)?;
 
         let Some(network_type_str) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "a network type in the origin line",
                 got: s.to_string(),
@@ -162,14 +162,14 @@ impl FromStr for SdpOrigin {
         let network_type = network_type_str.parse()?;
 
         let Some(ip_type_str) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "an ip type in the origin line",
                 got: s.to_string(),
             });
         };
         let Some(ip_str) = split.next() else {
-            return Err(MoonlightError::InvalidValue {
+            return Err(Error::InvalidValue {
                 context: ERROR_CONTEXT,
                 expected: "an ip in the origin line",
                 got: s.to_string(),
@@ -180,7 +180,7 @@ impl FromStr for SdpOrigin {
             "IPv4" => parse_ipv4(ERROR_CONTEXT, None, ip_str)?.into(),
             "IPv6" => parse_ipv6(ERROR_CONTEXT, None, ip_str)?.into(),
             _ => {
-                return Err(MoonlightError::InvalidValue {
+                return Err(Error::InvalidValue {
                     context: ERROR_CONTEXT,
                     expected: "a valid ip type in the origin line (e.g. IPv4 or IPv6)",
                     got: s.to_string(),
@@ -213,7 +213,7 @@ pub struct Sdp {
 }
 
 impl FromStr for Sdp {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lines = s.lines();
@@ -244,7 +244,7 @@ impl FromStr for Sdp {
             } else if let Some(media) = line.strip_prefix("m=") {
                 let mut split = media.split(" ");
                 let Some(type_str) = split.next() else {
-                    return Err(MoonlightError::InvalidValue {
+                    return Err(Error::InvalidValue {
                         context: ERROR_CONTEXT,
                         expected: "a media type",
                         got: s.to_string(),
@@ -253,7 +253,7 @@ impl FromStr for Sdp {
                 let media_type = SdpMediaType::from_str(type_str)?;
 
                 let Some(port_str) = split.next() else {
-                    return Err(MoonlightError::InvalidValue {
+                    return Err(Error::InvalidValue {
                         context: ERROR_CONTEXT,
                         expected: "a port in the media line",
                         got: s.to_string(),
@@ -266,7 +266,7 @@ impl FromStr for Sdp {
                 let mut split = time.split(" ");
 
                 let Some(t0_str) = split.next() else {
-                    return Err(MoonlightError::InvalidValue {
+                    return Err(Error::InvalidValue {
                         context: ERROR_CONTEXT,
                         expected: "a timestamp 0 in the media line",
                         got: s.to_string(),
@@ -275,7 +275,7 @@ impl FromStr for Sdp {
                 let t0 = parse_u32(ERROR_CONTEXT, None, t0_str)?;
 
                 let Some(t1_str) = split.next() else {
-                    return Err(MoonlightError::InvalidValue {
+                    return Err(Error::InvalidValue {
                         context: ERROR_CONTEXT,
                         expected: "a timestamp 1 in the media line",
                         got: s.to_string(),

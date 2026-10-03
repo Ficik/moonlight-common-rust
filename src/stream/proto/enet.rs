@@ -13,36 +13,36 @@ use rusty_enet::{
 use sans_io_time::Instant;
 use tracing::{debug, trace};
 
-use crate::{error::MoonlightError, stream::proto::control::peer::PacketSendError};
+use crate::{error::Error, stream::proto::control::peer::PacketSendError};
 
 // TODO: dynamically set timeout, see https://github.com/jabuwu/rusty_enet/issues/4
 // TODO: this seems interesting: https://github.com/zpl-c/enet/blob/8647b6eaea881c86471ae29f732620d299fc20d7/include/enet.h#L296-L488
 
-impl From<rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>> for MoonlightError {
+impl From<rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>> for Error {
     fn from(value: rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>) -> Self {
         match value {
             rusty_enet::error::HostNewError::BadParameter(parameter) => {
-                MoonlightError::Other(parameter.into())
+                Error::Other(parameter.into())
             }
             rusty_enet::error::HostNewError::FailedToInitializeSocket(_) => unreachable!(),
         }
     }
 }
 
-impl From<rusty_enet::error::PeerSendError> for MoonlightError {
+impl From<rusty_enet::error::PeerSendError> for Error {
     fn from(value: rusty_enet::error::PeerSendError) -> Self {
         use rusty_enet::error::PeerSendError;
 
         match value {
             PeerSendError::NotConnected => {
-                MoonlightError::PacketSend(PacketSendError::PeerNotConnected)
+                Error::PacketSend(PacketSendError::PeerNotConnected)
             }
-            value => MoonlightError::Other(value.into()),
+            value => Error::Other(value.into()),
         }
     }
 }
 
-impl From<rusty_enet::error::NoAvailablePeers> for MoonlightError {
+impl From<rusty_enet::error::NoAvailablePeers> for Error {
     fn from(value: rusty_enet::error::NoAvailablePeers) -> Self {
         Self::Other(value.into())
     }
@@ -126,7 +126,7 @@ impl EnetHost {
         addr: SocketAddr,
         channel_count: usize,
         data: u32,
-    ) -> Result<PeerID, MoonlightError> {
+    ) -> Result<PeerID, Error> {
         debug!(remote_addr = ?addr, connect_data = ?data, "enet starting connect");
 
         let peer = self.enet.connect(addr, channel_count, data)?;
@@ -134,18 +134,18 @@ impl EnetHost {
         Ok(peer.id())
     }
 
-    pub fn disconnect(&mut self, id: PeerID, data: u32) -> Result<(), MoonlightError> {
+    pub fn disconnect(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
         self.enet
             .get_peer_mut(id)
-            .ok_or(MoonlightError::PacketSend(PacketSendError::PeerNotFound))?
+            .ok_or(Error::PacketSend(PacketSendError::PeerNotFound))?
             .disconnect(data);
 
         Ok(())
     }
-    pub fn disconnect_now(&mut self, id: PeerID, data: u32) -> Result<(), MoonlightError> {
+    pub fn disconnect_now(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
         self.enet
             .get_peer_mut(id)
-            .ok_or(MoonlightError::PacketSend(PacketSendError::PeerNotFound))?
+            .ok_or(Error::PacketSend(PacketSendError::PeerNotFound))?
             .disconnect_now(data);
 
         Ok(())

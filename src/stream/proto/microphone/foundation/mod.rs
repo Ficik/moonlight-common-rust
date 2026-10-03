@@ -12,7 +12,7 @@ use sans_io_time::Instant;
 use tracing::{Level, instrument};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         SunshineEncryption,
         proto::{
@@ -74,7 +74,7 @@ impl FoundationMicStream {
         &mut self,
         timestamp: Duration,
         frame: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         self.payloader.push_frame(timestamp, frame)?;
 
         Ok(())
@@ -118,11 +118,11 @@ impl UdpStream for FoundationMicStream {
         _now: Instant,
         _addr: SocketAddr,
         _data: &[u8],
-    ) -> Result<(), MoonlightError> {
+    ) -> Result<(), Error> {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, _now: Instant) -> Result<(), MoonlightError> {
+    fn handle_timeout(&mut self, _now: Instant) -> Result<(), Error> {
         Ok(())
     }
 }

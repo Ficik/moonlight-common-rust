@@ -6,7 +6,7 @@ use tracing::{Level, instrument, trace, warn};
 
 use crate::{
     ServerVersion,
-    error::MoonlightError,
+    error::Error,
     stream::{
         control::{
             ActiveGamepads, BatteryState, CompactKeyStates, ControllerButtons,
@@ -33,7 +33,7 @@ pub const PERIODIC_PING_VERSION: ServerVersion = ServerVersion::new(7, 1, 415, 0
 #[error("this packet is not supported on this version of moonlight")]
 pub struct ControlPacketNotSupported;
 
-impl From<ControlPacketNotSupported> for MoonlightError {
+impl From<ControlPacketNotSupported> for Error {
     fn from(value: ControlPacketNotSupported) -> Self {
         Self::PacketSend(PacketSendError::PacketNotSupported(value))
     }

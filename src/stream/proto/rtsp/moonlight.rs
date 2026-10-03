@@ -6,7 +6,7 @@ use tracing::warn;
 
 use crate::{
     ServerVersion,
-    error::{MoonlightError, parse_u32},
+    error::{Error, parse_u32},
     stream::proto::{
         packet::{SUNSHINE_PING_PAYLOAD_SIZE, SunshinePing},
         rtsp::raw::{
@@ -44,11 +44,11 @@ pub struct RtspOptionsResponse {}
 impl RtspOptionsResponse {
     pub fn try_from_response(
         response: &RtspResponse,
-    ) -> Result<RtspOptionsResponse, MoonlightError> {
+    ) -> Result<RtspOptionsResponse, Error> {
         let _ = response;
 
         if response.message.status_code / 100 != 2 {
-            return Err(MoonlightError::StatusCode {
+            return Err(Error::StatusCode {
                 code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
@@ -89,16 +89,16 @@ pub struct RtspDescribeResponse {
 }
 
 impl RtspDescribeResponse {
-    pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<Self, Error> {
         if response.message.status_code / 100 != 2 {
-            return Err(MoonlightError::StatusCode {
+            return Err(Error::StatusCode {
                 code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }
 
         let Some(sdp) = &response.payload else {
-            return Err(MoonlightError::MissingPayload {
+            return Err(Error::MissingPayload {
                 context: ERROR_CONTEXT,
             });
         };
@@ -161,7 +161,7 @@ pub(crate) struct RtspSetupResponse {
 }
 
 impl RtspSetupResponse {
-    pub fn try_from_response(response: &RtspResponse) -> Result<RtspSetupResponse, MoonlightError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<RtspSetupResponse, Error> {
         // Parse the server port from the Transport header
         // Example: unicast;server_port=48000-48001;source=192.168.35.177
         // https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/RtspConnection.c#L705
@@ -193,7 +193,7 @@ impl RtspSetupResponse {
             .iter()
             .find(|(key, _)| key == "Session")
             .map(|(_, value)| value)
-            .ok_or(MoonlightError::MissingAttribute {
+            .ok_or(Error::MissingAttribute {
                 context: ERROR_CONTEXT,
                 attribute: "Session",
             })?
@@ -267,9 +267,9 @@ pub struct RtspSetupAudioResponse {
 }
 
 impl RtspSetupAudioResponse {
-    pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<Self, Error> {
         if response.message.status_code / 100 != 2 {
-            return Err(MoonlightError::StatusCode {
+            return Err(Error::StatusCode {
                 code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
@@ -317,9 +317,9 @@ pub struct RtspSetupVideoResponse {
 }
 
 impl RtspSetupVideoResponse {
-    pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<Self, Error> {
         if response.message.status_code / 100 != 2 {
-            return Err(MoonlightError::StatusCode {
+            return Err(Error::StatusCode {
                 code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
@@ -357,9 +357,9 @@ pub struct RtspSetupControlResponse {
     pub sunshine_connect_data: Option<u32>,
 }
 impl RtspSetupControlResponse {
-    pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<Self, Error> {
         if response.message.status_code / 100 != 2 {
-            return Err(MoonlightError::StatusCode {
+            return Err(Error::StatusCode {
                 code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });

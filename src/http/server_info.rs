@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     ServerState, ServerType, ServerVersion,
     error::{
-        MoonlightError, parse_ipv4, parse_mac, parse_number_as_bool, parse_server_state,
+        Error, parse_ipv4, parse_mac, parse_number_as_bool, parse_server_state,
         parse_server_version, parse_u16, parse_u32, parse_uuid,
     },
     http::{
@@ -51,7 +51,7 @@ impl Request for ServerInfoRequest {
     ) -> Result<(), QueryBuilderError> {
         Ok(())
     }
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -284,7 +284,7 @@ impl TextResponse for ServerInfoResponse {
 }
 
 impl FromStr for ServerInfoResponse {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         const ERROR_CONTEXT: &str = "http xml: server info";
@@ -330,7 +330,7 @@ impl FromStr for ServerInfoResponse {
 
         let apollo_game_uuid = match parse_xml_child_text(root, "currentgameuuid") {
             Ok(value) => Some(Some(parse_uuid(ERROR_CONTEXT, "currentgameuuid", value)?)),
-            Err(MoonlightError::InvalidAttribute { .. }) => Some(None),
+            Err(Error::InvalidAttribute { .. }) => Some(None),
             Err(_) => None,
         };
         // https://github.com/ClassicOldSong/Apollo/blob/a40b179886856bba1dfe311f430a25b9f3c44390/src/nvhttp.cpp#L931

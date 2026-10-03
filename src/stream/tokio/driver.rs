@@ -14,7 +14,7 @@ use tokio::{
 };
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{proto::runtime::UdpStream, sockets::new_udp_socket},
 };
 
@@ -29,7 +29,7 @@ impl<Stream> StreamDriver<Stream>
 where
     Stream: UdpStream,
 {
-    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, MoonlightError> {
+    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, Error> {
         let socket = new_udp_socket(false, stream.recv_buffer_hint())?;
 
         socket.set_nonblocking(true)?;
@@ -78,7 +78,7 @@ impl<'a, Stream> Future for DriveFuture<'a, Stream>
 where
     Stream: UdpStream,
 {
-    type Output = Result<Stream::Event, MoonlightError>;
+    type Output = Result<Stream::Event, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
@@ -185,7 +185,7 @@ mod tests {
     };
 
     use crate::{
-        error::MoonlightError,
+        error::Error,
         stream::{proto::runtime::UdpStream, tokio::driver::StreamDriver},
     };
 
@@ -228,7 +228,7 @@ mod tests {
             now: SansInstant,
             addr: SocketAddr,
             data: &[u8],
-        ) -> Result<(), MoonlightError> {
+        ) -> Result<(), Error> {
             self.event_list.push_back(TestEvent::Receive {
                 now,
                 addr,
@@ -236,7 +236,7 @@ mod tests {
             });
             Ok(())
         }
-        fn handle_timeout(&mut self, now: SansInstant) -> Result<(), MoonlightError> {
+        fn handle_timeout(&mut self, now: SansInstant) -> Result<(), Error> {
             self.event_list.push_back(TestEvent::Timeout(now));
             Ok(())
         }

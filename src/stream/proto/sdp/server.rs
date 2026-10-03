@@ -1,5 +1,5 @@
 use crate::{
-    error::{MoonlightError, parse_u32},
+    error::{Error, parse_u32},
     stream::{
         RawHostFeatures, VideoFormats,
         audio::OpusMultistreamConfig,
@@ -33,7 +33,7 @@ pub struct ServerSdp {
 }
 
 impl ServerSdp {
-    pub fn parse(sdp: Sdp) -> Result<Self, MoonlightError> {
+    pub fn parse(sdp: Sdp) -> Result<Self, Error> {
         let mut parsed = ServerSdp {
             // H264 is support on every server by default
             // See https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/RtspConnection.c#L1115

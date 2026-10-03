@@ -10,7 +10,7 @@ use tokio::{
 use tracing::{Level, debug, info, instrument, warn};
 
 use crate::{
-    error::MoonlightError,
+    error::Error,
     stream::{
         HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         audio::OpusMultistreamConfig,
@@ -74,7 +74,7 @@ impl MoonlightStream {
         settings: MoonlightStreamSettings,
         crypto_backend: DynCryptoBackend,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightError> {
+    ) -> Result<Self, Error> {
         debug!(config = ?config, settings = ?settings, video_capabilities = ?video_capabilities, "stream connect");
 
         let base_time = Instant::now();
@@ -194,7 +194,7 @@ impl MoonlightStream {
         loop {
             select! {
                 _ = &mut sleep => {
-                    return Err(MoonlightError::ConnectionTimeout);
+                    return Err(Error::ConnectionTimeout);
                 }
                 result = control_stream.drive() => {
                     let event = result?;
@@ -234,18 +234,18 @@ impl MoonlightStream {
         self.video_setup
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
         self.control_stream.stream().estimated_rtt()
     }
 
-    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), MoonlightError> {
+    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), Error> {
         self.control_stream.stream_mut().batch_input(input)
     }
-    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), MoonlightError> {
+    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), Error> {
         self.control_stream.stream_mut().send_raw(packet)
     }
 
-    pub fn disconnect(&mut self) -> Result<(), MoonlightError> {
+    pub fn disconnect(&mut self) -> Result<(), Error> {
         self.control_stream.stream_mut().disconnect(0)
     }
 
@@ -265,7 +265,7 @@ impl MoonlightStream {
         }
     }
 
-    pub async fn drive(&mut self) -> Result<MoonlightStreamEvent, MoonlightError> {
+    pub async fn drive(&mut self) -> Result<MoonlightStreamEvent, Error> {
         select! {
             result = self.audio_stream.drive() => result.map(MoonlightStreamEvent::from),
             result = self.video_stream.drive() => result.map(MoonlightStreamEvent::from),

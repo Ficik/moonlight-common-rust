@@ -4,7 +4,7 @@ use pem::Pem;
 use roxmltree::Document;
 
 use crate::{
-    error::{MoonlightError, parse_error, parse_hex, parse_pem},
+    error::{Error, parse_error, parse_hex, parse_pem},
     http::{
         QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
@@ -54,7 +54,7 @@ impl Request for PairPhase1Request {
     }
 
     /// It is expected that "phrase"="getservercert"
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, MoonlightError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -123,7 +123,7 @@ impl TextResponse for PairPhase1Response {
 }
 
 impl FromStr for PairPhase1Response {
-    type Err = MoonlightError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         const ERROR_CONTEXT: &str = "http xml: pair 1";
@@ -141,7 +141,7 @@ impl FromStr for PairPhase1Response {
                 let pem = parse_pem(ERROR_CONTEXT, "plaincert", &str)?;
                 Some(pem)
             }
-            Err(MoonlightError::MissingAttribute { .. }) => None,
+            Err(Error::MissingAttribute { .. }) => None,
             Err(err) => return Err(err),
         };
 
