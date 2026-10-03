@@ -273,6 +273,7 @@ pub enum ControllerType {
     Xbox,
     PlayStation,
     Nintendo,
+    Steam,
 }
 
 #[derive(Debug, Record, Default)]
@@ -419,6 +420,7 @@ pub struct ControllerCapabilities {
     pub gyro: bool,
     pub battery_state: bool,
     pub rgb_led: bool,
+    pub dual_touchpad: bool,
 }
 
 impl From<ControllerCapabilities> for ControllerCapabilities2 {
@@ -448,6 +450,9 @@ impl From<ControllerCapabilities> for ControllerCapabilities2 {
         }
         if value.rgb_led {
             bits |= Self::RGB_LED;
+        }
+        if value.dual_touchpad {
+            bits |= Self::DUAL_TOUCHPAD;
         }
 
         bits
@@ -481,6 +486,9 @@ impl From<ControllerCapabilities2> for ControllerCapabilities {
         }
         if value.contains(ControllerCapabilities2::RGB_LED) {
             bools.rgb_led = true;
+        }
+        if value.contains(ControllerCapabilities2::DUAL_TOUCHPAD) {
+            bools.dual_touchpad = true;
         }
 
         bools
@@ -809,6 +817,16 @@ pub enum ControlPacket {
         button_flags_2: i16,
         tail_b: i16,
     },
+    ControllerTouch {
+        controller_number: u8,
+        event_type: TouchEventType,
+        zero: u8,
+        touchpad_index: u8,
+        pointer_id: u32,
+        x: f32,
+        y: f32,
+        pressure: f32,
+    },
     ControllerArrival {
         controller_number: u8,
         ty: ControllerType,
@@ -1123,6 +1141,26 @@ impl From<ControlPacket> for ControlPacket2 {
                 tail_a,
                 button_flags_2,
                 tail_b,
+            },
+
+            ControlPacket::ControllerTouch {
+                controller_number,
+                event_type,
+                zero,
+                touchpad_index,
+                pointer_id,
+                x,
+                y,
+                pressure,
+            } => Self::ControllerTouch {
+                controller_number,
+                event_type,
+                zero,
+                touchpad_index,
+                pointer_id,
+                x,
+                y,
+                pressure,
             },
 
             ControlPacket::ControllerArrival {
@@ -1451,6 +1489,26 @@ impl From<ControlPacket2> for ControlPacket {
                 tail_a,
                 button_flags_2,
                 tail_b,
+            },
+
+            ControlPacket2::ControllerTouch {
+                controller_number,
+                event_type,
+                zero,
+                touchpad_index,
+                pointer_id,
+                x,
+                y,
+                pressure,
+            } => Self::ControllerTouch {
+                controller_number,
+                event_type,
+                zero,
+                touchpad_index,
+                pointer_id,
+                x,
+                y,
+                pressure,
             },
 
             ControlPacket2::ControllerArrival {
