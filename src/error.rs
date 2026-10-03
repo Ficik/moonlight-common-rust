@@ -187,6 +187,7 @@ impl Display for ErrorList {
 
 impl std::error::Error for ErrorList {}
 
+#[allow(unused)]
 pub(crate) fn parse_error(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -209,6 +210,7 @@ pub(crate) fn parse_error(
     }
 }
 
+#[allow(unused)]
 pub(crate) fn parse_u32(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -223,6 +225,7 @@ pub(crate) fn parse_u32(
         )
     })
 }
+#[allow(unused)]
 pub(crate) fn parse_u16(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -238,6 +241,7 @@ pub(crate) fn parse_u16(
     })
 }
 
+#[allow(unused)]
 pub(crate) fn parse_i32(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -253,6 +257,7 @@ pub(crate) fn parse_i32(
     })
 }
 
+#[allow(unused)]
 pub(crate) fn parse_number_as_bool(
     context: &'static str,
     attribute: &'static str,
@@ -270,6 +275,7 @@ pub(crate) fn parse_number_as_bool(
     }
 }
 
+#[allow(unused)]
 pub(crate) fn parse_ipv4(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -285,6 +291,7 @@ pub(crate) fn parse_ipv4(
     })
 }
 
+#[allow(unused)]
 pub(crate) fn parse_ipv6(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -300,6 +307,7 @@ pub(crate) fn parse_ipv6(
     })
 }
 
+#[allow(unused)]
 pub(crate) fn parse_mac(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -310,6 +318,7 @@ pub(crate) fn parse_mac(
         .map_err(|_| parse_error(context, attribute, "a valid mac address", value.to_string()))
 }
 
+#[allow(unused)]
 pub(crate) fn parse_uuid(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -320,6 +329,7 @@ pub(crate) fn parse_uuid(
         .map_err(|_| parse_error(context, attribute, "a valid uuid", value.to_string()))
 }
 
+#[allow(unused)]
 pub(crate) fn parse_server_version(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -335,6 +345,7 @@ pub(crate) fn parse_server_version(
     })
 }
 
+#[allow(unused)]
 pub(crate) fn parse_hex(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -344,6 +355,7 @@ pub(crate) fn parse_hex(
         .map_err(|_| parse_error(context, attribute, "valid hex bytes", value.to_string()))
 }
 
+#[allow(unused)]
 pub(crate) fn parse_pem(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
@@ -353,6 +365,7 @@ pub(crate) fn parse_pem(
         .map_err(|_| parse_error(context, attribute, "a valid pem string", value.to_string()))
 }
 
+#[allow(unused)]
 pub(crate) fn parse_server_state(
     context: &'static str,
     attribute: impl Into<Option<&'static str>>,
