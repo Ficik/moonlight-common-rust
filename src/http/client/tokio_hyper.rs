@@ -171,7 +171,9 @@ impl RequestClient for TokioHyperClient {
             SectionKind::PrivateKey,
             client_private_key.contents().to_vec(),
         )
-        .ok_or(MoonlightError::Other(format!("invalid private key").into()))?
+        .ok_or(MoonlightError::Other(
+            "invalid private key".to_string().into(),
+        ))?
         .clone_key();
 
         let certificate = CertificateDer::from_slice(client_certificate.contents()).into_owned();
@@ -239,7 +241,7 @@ impl RequestClient for TokioHyperClient {
 
         debug!(response = ?response_text, "received response");
 
-        Ok(E::Response::from_str(&response_text)?)
+        E::Response::from_str(&response_text)
     }
 
     #[instrument(level = Level::DEBUG, skip(self, request), fields(path = E::path()), err)]
@@ -264,7 +266,7 @@ impl RequestClient for TokioHyperClient {
 
         debug!(response = ?response_text, "received response");
 
-        Ok(E::Response::from_str(&response_text)?)
+        E::Response::from_str(&response_text)
     }
 
     #[instrument(level = Level::DEBUG, skip(self, request), fields(path = E::path()), err)]

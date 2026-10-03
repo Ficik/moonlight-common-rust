@@ -49,7 +49,7 @@ impl RtspOptionsResponse {
 
         if response.message.status_code / 100 != 2 {
             return Err(MoonlightError::StatusCode {
-                code: response.message.status_code as i32,
+                code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }
@@ -92,7 +92,7 @@ impl RtspDescribeResponse {
     pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
         if response.message.status_code / 100 != 2 {
             return Err(MoonlightError::StatusCode {
-                code: response.message.status_code as i32,
+                code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }
@@ -270,7 +270,7 @@ impl RtspSetupAudioResponse {
     pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
         if response.message.status_code / 100 != 2 {
             return Err(MoonlightError::StatusCode {
-                code: response.message.status_code as i32,
+                code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }
@@ -320,7 +320,7 @@ impl RtspSetupVideoResponse {
     pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
         if response.message.status_code / 100 != 2 {
             return Err(MoonlightError::StatusCode {
-                code: response.message.status_code as i32,
+                code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }
@@ -360,7 +360,7 @@ impl RtspSetupControlResponse {
     pub fn try_from_response(response: &RtspResponse) -> Result<Self, MoonlightError> {
         if response.message.status_code / 100 != 2 {
             return Err(MoonlightError::StatusCode {
-                code: response.message.status_code as i32,
+                code: response.message.status_code,
                 reason: response.message.status_message.clone(),
             });
         }

@@ -102,7 +102,9 @@ impl ControlStream {
         if config.server_version.major < 5 {
             // Servers below v5 use tcp and don't have encryption support
             // https://github.com/moonlight-stream/moonlight-common-c/blob/7b026e77be62175104640e7e722b758df6d3d0d7/src/ControlStream.c#L849-L856
-            return Err(MoonlightError::ServerVersionNotSupported(config.server_version).into());
+            return Err(MoonlightError::ServerVersionNotSupported(
+                config.server_version,
+            ));
         }
 
         // All values that could lead to an error are controlled by us and won't cause errors
