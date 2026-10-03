@@ -44,8 +44,13 @@ impl From<hyper::Error> for MoonlightError {
     }
 }
 impl From<hyper_util::client::legacy::Error> for MoonlightError {
-    fn from(value: hyper_util::client::legacy::Error) -> Self {
-        todo!()
+    fn from(_value: hyper_util::client::legacy::Error) -> Self {
+        Self::ConnectionFailed
+    }
+}
+impl From<rustls::Error> for MoonlightError {
+    fn from(value: rustls::Error) -> Self {
+        Self::Other(value.into())
     }
 }
 
@@ -166,7 +171,7 @@ impl RequestClient for TokioHyperClient {
             SectionKind::PrivateKey,
             client_private_key.contents().to_vec(),
         )
-        .ok_or(MoonlightError::InvalidPrivateKey)?
+        .ok_or(MoonlightError::Other(format!("invalid private key").into()))?
         .clone_key();
 
         let certificate = CertificateDer::from_slice(client_certificate.contents()).into_owned();
