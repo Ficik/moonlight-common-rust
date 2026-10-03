@@ -330,7 +330,7 @@ impl FromStr for ServerInfoResponse {
 
         let apollo_game_uuid = match parse_xml_child_text(root, "currentgameuuid") {
             Ok(value) => Some(Some(parse_uuid(ERROR_CONTEXT, "currentgameuuid", value)?)),
-            Err(Error::InvalidAttribute { .. }) => Some(None),
+            Err(Error::InvalidValue { .. }) => Some(None),
             Err(_) => None,
         };
         // https://github.com/ClassicOldSong/Apollo/blob/a40b179886856bba1dfe311f430a25b9f3c44390/src/nvhttp.cpp#L931
