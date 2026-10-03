@@ -110,6 +110,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[allow(unused)]
     pub(crate) fn from_thread_panic(error: Box<dyn Any + Send>) -> Self {
         let message = if let Some(message) = error.downcast_ref::<&str>() {
             (*message).to_owned()
@@ -122,6 +123,7 @@ impl Error {
         Error::ThreadPanic(message)
     }
 
+    #[allow(unused)]
     pub(crate) fn other(error: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Other(error.into())
     }
