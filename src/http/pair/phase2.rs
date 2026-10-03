@@ -2,11 +2,13 @@ use std::{fmt, str::FromStr};
 
 use roxmltree::Document;
 
-use crate::http::{
-    FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
-    TextResponse,
-    helper::{parse_xml_child_text, parse_xml_root_node},
-    pair::parse_xml_child_paired,
+use crate::{
+    error::{Error, parse_hex},
+    http::{
+        QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        pair::parse_xml_child_paired,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,17 +40,20 @@ impl Request for PairPhase2Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 2";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
         // let update_state: i32 = query_map.get("updateState")?.parse()?;
 
         let encrypted_challenge_hex = query_map.get("clientchallenge")?;
-        let encrypted_challenge = hex::decode(encrypted_challenge_hex.as_bytes())?;
+        let encrypted_challenge =
+            parse_hex(ERROR_CONTEXT, "clientchallenge", &encrypted_challenge_hex)?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -94,16 +99,19 @@ impl TextResponse for PairPhase2Response {
 }
 
 impl FromStr for PairPhase2Response {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "challengeresponse";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         let challenge_response_str = parse_xml_child_text(root, "challengeresponse")?;
-        let challenge_response = hex::decode(challenge_response_str)?;
+        let challenge_response =
+            parse_hex(ERROR_CONTEXT, "challengeresponse", challenge_response_str)?;
 
         Ok(PairPhase2Response {
             paired,

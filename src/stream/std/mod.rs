@@ -12,55 +12,36 @@ use std::{
     time::{Duration, Instant},
 };
 
-use thiserror::Error;
 use tracing::{Level, debug, info, info_span, instrument, trace, warn};
 
-use crate::stream::{
-    HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
-    audio::{AudioConfig, AudioDecoder, AudioFrame},
-    connection::ConnectionListener,
-    control::EstimatedRttInfo,
-    proto::{
-        DynCryptoBackend, MOONLIGHT_STREAM_SETUP_TCP_CONNECT_TIMEOUT, MoonlightStreamInput,
-        MoonlightStreamProtoError, MoonlightStreamSetup, MoonlightStreamSetupOutput,
-        audio::{AudioStream, AudioStreamError, AudioStreamEvent},
-        control::{
-            ControlStream, ControlStreamEvent,
-            input_batcher::ClientInputEvent,
-            packet::{ControlPacket, TerminationReason},
-            peer::ControlError,
+use crate::{
+    error::{ErrorList, Error},
+    stream::{
+        HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
+        audio::{AudioConfig, AudioDecoder, AudioFrame},
+        connection::ConnectionListener,
+        control::EstimatedRttInfo,
+        proto::{
+            DynCryptoBackend, MOONLIGHT_STREAM_SETUP_TCP_CONNECT_TIMEOUT, MoonlightStreamInput,
+            MoonlightStreamSetup, MoonlightStreamSetupOutput,
+            audio::{AudioStream, AudioStreamEvent},
+            control::{
+                ControlStream, ControlStreamEvent,
+                input_batcher::ClientInputEvent,
+                packet::{ControlPacket, TerminationReason},
+            },
+            crypto::CryptoBackend,
+            microphone::foundation::FoundationMicStream,
+            video::{VideoStream, VideoStreamEvent},
         },
-        crypto::CryptoBackend,
-        microphone::foundation::{FoundationMicStream, FoundationMicStreamError},
-        video::{VideoStream, VideoStreamError, VideoStreamEvent},
+        std::driver::SyncUdpDriver,
+        video::VideoDecoder,
     },
-    std::driver::SyncUdpDriver,
-    video::VideoDecoder,
 };
 
 mod driver;
 
 // TODO: how to handle graceful shutdown??
-
-#[derive(Debug, Error)]
-pub enum MoonlightStreamError {
-    #[error("io: {0}")]
-    Io(#[from] io::Error),
-    #[error("proto: {0}")]
-    Proto(#[from] MoonlightStreamProtoError),
-    #[error("audio stream: {0}")]
-    Audio(#[from] AudioStreamError),
-    #[error("video stream: {0}")]
-    Video(#[from] VideoStreamError),
-    #[error("control stream: {0}")]
-    Control(#[from] ControlError),
-    #[error("foundation mic stream: {0}")]
-    FoundationMic(#[from] FoundationMicStreamError),
-    #[error("thread join: {0:?}")]
-    ThreadJoin(Box<dyn Any + Send + 'static>),
-    #[error("exceeded connection timeout")]
-    ConnectionTimeout,
-}
 
 pub struct MoonlightStream {
     inner: Arc<Inner>,
@@ -79,7 +60,7 @@ impl MoonlightStream {
         mut audio_decoder: impl AudioDecoder + Send + 'static,
         connection_listener: impl ConnectionListener + Send + 'static,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, MoonlightStreamError> {
+    ) -> Result<Self, Error> {
         let base_time = Instant::now();
 
         let span = info_span!("stream");
@@ -248,12 +229,17 @@ impl MoonlightStream {
                 debug!("enet connect failed");
                 let error = handle.join();
 
-                error.map_err(MoonlightStreamError::ThreadJoin)??;
+                let mut errors = Default::default();
+
+                join_run_thread(&mut errors, error);
+
+                finalize_errors(errors)?;
+
                 unreachable!()
             }
             Err(RecvTimeoutError::Timeout) => {
                 debug!("connection timeout on connect");
-                return Err(MoonlightStreamError::ConnectionTimeout);
+                return Err(Error::ConnectionTimeout);
             }
         }
 
@@ -262,14 +248,14 @@ impl MoonlightStream {
         Ok(Self { inner })
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, ControlError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
         self.inner
             .streams
             .control
             .stream(|stream| stream.estimated_rtt())
     }
 
-    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), ControlError> {
+    pub fn send_input(&self, input: ClientInputEvent) -> Result<(), Error> {
         trace!(input = ?input, "received input from application");
 
         self.inner
@@ -279,7 +265,7 @@ impl MoonlightStream {
 
         Ok(())
     }
-    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), ControlError> {
+    pub fn send_input_raw(&self, packet: ControlPacket) -> Result<(), Error> {
         trace!(packet = ?packet, "received packet from application");
 
         self.inner
@@ -350,13 +336,13 @@ impl Inner {
         mut video_decoder: impl VideoDecoder + Send + 'static,
         mut audio_decoder: impl AudioDecoder + Send + 'static,
         mut connection_listener: impl ConnectionListener + Send + 'static,
-    ) -> Result<(), MoonlightStreamError> {
+    ) -> Result<(), Error> {
         let audio = info_span!("audio_stream");
         let video = info_span!("video_stream");
         let control = info_span!("control_stream");
         let foundation_mic = info_span!("foundation_mic");
 
-        thread::scope::<_, Result<_, MoonlightStreamError>>(|scope| {
+        thread::scope::<_, Result<_, Error>>(|scope| {
             let audio_run = scope
                 .spawn(|| audio.in_scope(|| self.streams.audio.run().inspect_err(|_| self.stop())));
             let audio_events = scope.spawn(|| {
@@ -494,31 +480,22 @@ impl Inner {
             // No need for foundation mic events, it's only sending
 
             // -- Join all threads
-            let audio_run_res = audio_run.join();
-            let audio_events_res = audio_events.join();
+            let mut errors = Default::default();
 
-            let video_run_res = video_run.join();
-            let video_events_res = video_events.join();
+            join_run_thread(&mut errors, audio_run.join());
+            join_event_thread(&mut errors, audio_events.join());
 
-            let control_run_res = control_run.join();
-            let control_events_res = control_events.join();
+            join_run_thread(&mut errors, video_run.join());
+            join_event_thread(&mut errors, video_events.join());
 
-            let foundation_mic_res = foundation_mic_run.map(|x| x.join());
+            join_run_thread(&mut errors, control_run.join());
+            join_event_thread(&mut errors, control_events.join());
 
-            // -- Handle possible errors
-            audio_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            audio_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
+            if let Some(foundation_mic_run) = foundation_mic_run {
+                join_run_thread(&mut errors, foundation_mic_run.join());
+            }
 
-            video_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            video_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
-
-            control_run_res.map_err(MoonlightStreamError::ThreadJoin)??;
-            control_events_res.map_err(MoonlightStreamError::ThreadJoin)?;
-
-            foundation_mic_res
-                .transpose()
-                .map_err(MoonlightStreamError::ThreadJoin)?
-                .transpose()?;
+            finalize_errors(errors)?;
 
             Ok(())
         })?;
@@ -539,5 +516,28 @@ impl Inner {
         if let Some(foundation_mic) = &self.streams.foundation_mic {
             foundation_mic.stop();
         }
+    }
+}
+
+fn join_run_thread(
+    errors: &mut Vec<Error>,
+    error: Result<Result<(), Error>, Box<dyn Any + Send>>,
+) {
+    match error {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => errors.push(error),
+        Err(error) => errors.push(Error::from_thread_panic(error)),
+    }
+}
+fn join_event_thread(errors: &mut Vec<Error>, error: Result<(), Box<dyn Any + Send>>) {
+    match error {
+        Ok(_) => {}
+        Err(error) => errors.push(Error::from_thread_panic(error)),
+    }
+}
+fn finalize_errors(errors: Vec<Error>) -> Result<(), Error> {
+    match ErrorList::try_from(errors) {
+        Ok(value) => Err(value.into()),
+        Err(_) => Ok(()),
     }
 }

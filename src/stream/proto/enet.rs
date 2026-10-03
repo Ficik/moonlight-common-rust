@@ -11,32 +11,38 @@ use rusty_enet::{
     SocketOptions,
 };
 use sans_io_time::Instant;
-use thiserror::Error;
 use tracing::{debug, trace};
+
+use crate::{error::Error, stream::proto::control::peer::PacketSendError};
 
 // TODO: dynamically set timeout, see https://github.com/jabuwu/rusty_enet/issues/4
 // TODO: this seems interesting: https://github.com/zpl-c/enet/blob/8647b6eaea881c86471ae29f732620d299fc20d7/include/enet.h#L296-L488
 
-#[derive(Debug, Error)]
-pub enum EnetError {
-    #[error("bad enet parameter: {0}")]
-    BadParameter(#[from] rusty_enet::error::BadParameter),
-    #[error("no available peers: {0}")]
-    NoAvailablePeers(#[from] rusty_enet::error::NoAvailablePeers),
-    #[error("no available peers: {0}")]
-    PeerSendError(#[from] rusty_enet::error::PeerSendError),
-    #[error("the peer was not found")]
-    PeerNotFound,
-}
-
-impl From<rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>> for EnetError {
+impl From<rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>> for Error {
     fn from(value: rusty_enet::error::HostNewError<ReadWrite<SocketAddr, Infallible>>) -> Self {
         match value {
             rusty_enet::error::HostNewError::BadParameter(parameter) => {
-                Self::BadParameter(parameter)
+                Error::Other(parameter.into())
             }
             rusty_enet::error::HostNewError::FailedToInitializeSocket(_) => unreachable!(),
         }
+    }
+}
+
+impl From<rusty_enet::error::PeerSendError> for Error {
+    fn from(value: rusty_enet::error::PeerSendError) -> Self {
+        use rusty_enet::error::PeerSendError;
+
+        match value {
+            PeerSendError::NotConnected => Error::PacketSend(PacketSendError::PeerNotConnected),
+            value => Error::Other(value.into()),
+        }
+    }
+}
+
+impl From<rusty_enet::error::NoAvailablePeers> for Error {
+    fn from(value: rusty_enet::error::NoAvailablePeers) -> Self {
+        Self::Other(value.into())
     }
 }
 
@@ -118,7 +124,7 @@ impl EnetHost {
         addr: SocketAddr,
         channel_count: usize,
         data: u32,
-    ) -> Result<PeerID, EnetError> {
+    ) -> Result<PeerID, Error> {
         debug!(remote_addr = ?addr, connect_data = ?data, "enet starting connect");
 
         let peer = self.enet.connect(addr, channel_count, data)?;
@@ -126,18 +132,18 @@ impl EnetHost {
         Ok(peer.id())
     }
 
-    pub fn disconnect_later(&mut self, id: PeerID, data: u32) -> Result<(), EnetError> {
+    pub fn disconnect(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
         self.enet
             .get_peer_mut(id)
-            .ok_or(EnetError::PeerNotFound)?
+            .ok_or(Error::PacketSend(PacketSendError::PeerNotFound))?
             .disconnect_later(data);
 
         Ok(())
     }
-    pub fn disconnect_now(&mut self, id: PeerID, data: u32) -> Result<(), EnetError> {
+    pub fn disconnect_now(&mut self, id: PeerID, data: u32) -> Result<(), Error> {
         self.enet
             .get_peer_mut(id)
-            .ok_or(EnetError::PeerNotFound)?
+            .ok_or(Error::PacketSend(PacketSendError::PeerNotFound))?
             .disconnect_now(data);
 
         Ok(())

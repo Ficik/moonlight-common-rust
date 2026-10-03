@@ -1,5 +1,3 @@
-use crate::http::ParseError;
-
 use std::time::Duration;
 
 pub mod async_client;
@@ -14,18 +12,14 @@ pub mod tokio_hyper;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_LONG_TIMEOUT: Duration = Duration::from_secs(90);
 
-pub trait RequestError: TryInto<ParseError, Error = Self> {
-    /// The machine cannot be reached: timeout, connection refused
-    fn is_connect(&self) -> bool;
-    /// The sunshine encryption is invalid (e.g. the host removed our client -> we're unpaired)
-    fn is_encryption(&self) -> bool;
-}
-
 #[cfg(any(feature = "ureq", feature = "tokio-hyper"))]
 mod hyperlike {
     use hyper::Uri;
 
-    use crate::http::{ClientInfo, Endpoint, QueryBuilder, QueryBuilderError, QueryParam, Request};
+    use crate::{
+        error::Error,
+        http::{ClientInfo, Endpoint, QueryBuilder, QueryBuilderError, QueryParam, Request},
+    };
 
     struct StringQueryBuilder<'a> {
         is_first: bool,
@@ -47,15 +41,14 @@ mod hyperlike {
         }
     }
 
-    pub fn build_url<E, Err>(
+    pub fn build_url<E>(
         use_https: bool,
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<Uri, Err>
+    ) -> Result<Uri, Error>
     where
         E: Endpoint,
-        Err: From<http::Error>,
     {
         let mut path_and_query = format!("{}?", E::path());
 
@@ -75,7 +68,7 @@ mod hyperlike {
             .authority(hostport)
             .path_and_query(path_and_query)
             .build()
-            .map_err(|err| Err::from(err))?;
+            .map_err(|err| Error::Other(err.into()))?;
 
         Ok(uri)
     }

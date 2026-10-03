@@ -1,17 +1,17 @@
 use std::{
     fmt::{self, Display, Formatter},
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr},
-    num::ParseIntError,
+    net::IpAddr,
     str::FromStr,
 };
 
-use thiserror::Error;
 use tracing::warn;
+
+use crate::error::{Error, parse_ipv4, parse_ipv6, parse_u16, parse_u32};
 
 pub mod client;
 pub mod server;
 
-// TODO: replace this by sdp types rust crate
+const ERROR_CONTEXT: &str = "sdp";
 
 #[derive(Debug, PartialEq)]
 pub struct SdpAttribute {
@@ -42,12 +42,16 @@ impl Display for SdpNetworkType {
 }
 
 impl FromStr for SdpNetworkType {
-    type Err = ();
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "IN" => Ok(Self::In),
-            _ => Err(()),
+            _ => Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a network type (e.g. IN)",
+                got: s.to_string(),
+            }),
         }
     }
 }
@@ -69,13 +73,17 @@ impl Display for SdpMediaType {
 }
 
 impl FromStr for SdpMediaType {
-    type Err = ();
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "video" => Ok(Self::Video),
             "audio" => Ok(Self::Audio),
-            _ => Err(()),
+            _ => Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a valid media type",
+                got: s.to_string(),
+            }),
         }
     }
 }
@@ -113,84 +121,77 @@ impl Display for SdpOrigin {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum ParseSdpOriginError {
-    #[error("invalid line: \"{line}\"")]
-    InvalidLine { line: String },
-    #[error("failed to parse int: {0}")]
-    ParseInt(#[from] ParseIntError),
-    #[error("failed to parse network type: \"{network_type}\"")]
-    ParseNetworkType { network_type: String },
-    #[error("failed to parse ip address type: {ip_type}")]
-    ParseIpAddrType { ip_type: String },
-    #[error("failed to parse ip address: {0}")]
-    ParseIpAddr(#[from] AddrParseError),
-}
-
 impl FromStr for SdpOrigin {
-    type Err = ParseSdpOriginError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut split = s.split(" ");
         let Some(username) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a username in the origin line",
+                got: s.to_string(),
             });
         };
 
         let Some(session_id_str) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a session id in the origin line",
+                got: s.to_string(),
             });
         };
-        let session_id = session_id_str.parse()?;
+        let session_id = parse_u32(ERROR_CONTEXT, None, session_id_str)?;
 
         let Some(session_version_str) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a session id in the origin line",
+                got: s.to_string(),
             });
         };
-        let session_version = session_version_str.parse()?;
+        let session_version = parse_u32(ERROR_CONTEXT, None, session_version_str)?;
 
         let Some(network_type_str) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "a network type in the origin line",
+                got: s.to_string(),
             });
         };
-        let network_type = match network_type_str.parse() {
-            Ok(value) => value,
-            Err(_) => {
-                return Err(ParseSdpOriginError::ParseNetworkType {
-                    network_type: network_type_str.to_string(),
-                });
-            }
-        };
+        let network_type = network_type_str.parse()?;
 
         let Some(ip_type_str) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "an ip type in the origin line",
+                got: s.to_string(),
             });
         };
         let Some(ip_str) = split.next() else {
-            return Err(ParseSdpOriginError::InvalidLine {
-                line: s.to_string(),
+            return Err(Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "an ip in the origin line",
+                got: s.to_string(),
             });
         };
 
         let ip = match ip_type_str {
-            "IPv4" => ip_str.parse::<Ipv4Addr>()?.into(),
-            "IPv6" => ip_str.parse::<Ipv6Addr>()?.into(),
+            "IPv4" => parse_ipv4(ERROR_CONTEXT, None, ip_str)?.into(),
+            "IPv6" => parse_ipv6(ERROR_CONTEXT, None, ip_str)?.into(),
             _ => {
-                return Err(ParseSdpOriginError::ParseIpAddrType {
-                    ip_type: ip_type_str.to_string(),
+                return Err(Error::InvalidValue {
+                    context: ERROR_CONTEXT,
+                    expected: "a valid ip type in the origin line (e.g. IPv4 or IPv6)",
+                    got: s.to_string(),
                 });
             }
         };
 
         Ok(Self {
             username: username.to_string(),
-            session_id,
-            session_version,
+            session_id: session_id as usize,
+            session_version: session_version as usize,
             network_type,
             ip,
         })
@@ -211,22 +212,8 @@ pub struct Sdp {
     pub time: Option<(u32, u32)>,
 }
 
-#[derive(Debug, Error)]
-pub enum ParseSdpError {
-    #[error("invalid fmtp line: {0}")]
-    InvalidFmtpLine(String),
-    #[error("failed to parse int: {0}")]
-    ParseInt(#[from] ParseIntError),
-    #[error("failed to parse origin: {0}")]
-    ParseOrigin(#[from] ParseSdpOriginError),
-    #[error("failed to parse media line: \"{line}\"")]
-    ParseMediaLine { line: String },
-    #[error("failed to parse media line: \"{line}\"")]
-    ParseTimeLine { line: String },
-}
-
 impl FromStr for Sdp {
-    type Err = ParseSdpError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lines = s.lines();
@@ -235,9 +222,9 @@ impl FromStr for Sdp {
 
         for line in lines {
             if let Some(version) = line.strip_prefix("v=") {
-                let version = version.parse()?;
+                let version = parse_u32(ERROR_CONTEXT, "version", version)?;
 
-                sdp.version = Some(version);
+                sdp.version = Some(version as usize);
             } else if let Some(origin) = line.strip_prefix("o=") {
                 let origin = SdpOrigin::from_str(origin)?;
 
@@ -257,40 +244,44 @@ impl FromStr for Sdp {
             } else if let Some(media) = line.strip_prefix("m=") {
                 let mut split = media.split(" ");
                 let Some(type_str) = split.next() else {
-                    return Err(ParseSdpError::ParseMediaLine {
-                        line: line.to_string(),
+                    return Err(Error::InvalidValue {
+                        context: ERROR_CONTEXT,
+                        expected: "a media type",
+                        got: s.to_string(),
                     });
                 };
-                let Ok(media_type) = SdpMediaType::from_str(type_str) else {
-                    return Err(ParseSdpError::ParseMediaLine {
-                        line: line.to_string(),
-                    });
-                };
+                let media_type = SdpMediaType::from_str(type_str)?;
 
                 let Some(port_str) = split.next() else {
-                    return Err(ParseSdpError::ParseMediaLine {
-                        line: line.to_string(),
+                    return Err(Error::InvalidValue {
+                        context: ERROR_CONTEXT,
+                        expected: "a port in the media line",
+                        got: s.to_string(),
                     });
                 };
-                let port = port_str.parse()?;
+                let port = parse_u16(ERROR_CONTEXT, None, port_str)?;
 
                 sdp.media.push(SdpMedia { media_type, port });
             } else if let Some(time) = line.strip_prefix("t=") {
                 let mut split = time.split(" ");
 
                 let Some(t0_str) = split.next() else {
-                    return Err(ParseSdpError::ParseTimeLine {
-                        line: line.to_string(),
+                    return Err(Error::InvalidValue {
+                        context: ERROR_CONTEXT,
+                        expected: "a timestamp 0 in the media line",
+                        got: s.to_string(),
                     });
                 };
-                let t0 = t0_str.parse()?;
+                let t0 = parse_u32(ERROR_CONTEXT, None, t0_str)?;
 
                 let Some(t1_str) = split.next() else {
-                    return Err(ParseSdpError::ParseTimeLine {
-                        line: line.to_string(),
+                    return Err(Error::InvalidValue {
+                        context: ERROR_CONTEXT,
+                        expected: "a timestamp 1 in the media line",
+                        got: s.to_string(),
                     });
                 };
-                let t1 = t1_str.parse()?;
+                let t1 = parse_u32(ERROR_CONTEXT, None, t1_str)?;
 
                 sdp.time = Some((t0, t1));
             } else {

@@ -8,9 +8,10 @@ use tracing::info;
 
 use crate::{
     App, AppId, ServerState, ServerVersion,
+    error::Error,
     http::{
-        ClientInfo, DEFAULT_UNIQUE_ID, FromQueryError, ParseError, QueryBuilder, QueryBuilderError,
-        QueryMap, QueryParam, Request, TextResponse,
+        ClientInfo, DEFAULT_UNIQUE_ID, QueryBuilder, QueryBuilderError, QueryMap, QueryParam,
+        Request, TextResponse,
         app_list::{AppListRequest, AppListResponse},
         box_art::AppBoxArtRequest,
         cancel::{CancelRequest, CancelResponse},
@@ -44,11 +45,14 @@ impl QueryMap for TestQuery {
     fn has(&self, param: &str) -> bool {
         self.params.contains_key(param)
     }
-    fn get<'a>(&'a self, param: &str) -> Result<Cow<'a, str>, FromQueryError> {
+    fn get<'a>(&'a self, param: &'static str) -> Result<Cow<'a, str>, Error> {
         self.params
             .get(param)
             .map(Cow::from)
-            .ok_or(FromQueryError::QueryParamNotFound(param.to_string()))
+            .ok_or(Error::MissingAttribute {
+                context: "query parameter test",
+                attribute: param,
+            })
     }
 }
 
@@ -356,14 +360,13 @@ fn response_host_info_auth_fail() {
     "#,
     );
 
-    assert_eq!(
+    assert!(matches!(
         ServerInfoResponse::from_str(&text).unwrap_err(),
-        ParseError::InvalidXmlStatusCode {
-            message: Some(
-                "The client is not authorized. Certificate verification failed.".to_string()
-            )
-        }
-    );
+        Error::StatusCode {
+            code: 401,
+            reason
+        } if reason == "The client is not authorized. Certificate verification failed."
+    ));
 }
 
 #[test]
@@ -648,12 +651,10 @@ fn response_launch_fail() {
 "#,
     );
 
-    assert_eq!(
+    assert!(matches!(
         LaunchResponse::from_str(&response).unwrap_err(),
-        ParseError::InvalidXmlStatusCode {
-            message: Some("Failed to start the specified application".to_string())
-        }
-    );
+        Error::StatusCode { code: -1, reason } if reason == "Failed to start the specified application"
+    ),);
 }
 
 #[test]

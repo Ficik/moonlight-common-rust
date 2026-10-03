@@ -1,17 +1,20 @@
 use thiserror::Error;
 use tracing::warn;
 
-use crate::stream::{
-    AesKey,
-    proto::{
-        control::{
-            ControlEncryptionMethod,
-            packet::{
-                ENCRYPTED_CONTROL_PACKET_AES_GCM_TAG_LENGTH, ENCRYPTED_CONTROL_PACKET_TYPE,
-                EncryptedControlHeader,
+use crate::{
+    error::Error,
+    stream::{
+        AesKey,
+        proto::{
+            control::{
+                ControlEncryptionMethod,
+                packet::{
+                    ENCRYPTED_CONTROL_PACKET_AES_GCM_TAG_LENGTH, ENCRYPTED_CONTROL_PACKET_TYPE,
+                    EncryptedControlHeader,
+                },
             },
+            crypto::CryptoBackend,
         },
-        crypto::{CryptoBackend, CryptoError},
     },
 };
 
@@ -27,8 +30,12 @@ pub enum ControlEncryptionError {
     PayloadTooSmall,
     #[error("payload is too small")]
     EncryptionHeaderLengthTooSmall,
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
+}
+
+impl From<ControlEncryptionError> for Error {
+    fn from(value: ControlEncryptionError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 fn encrypt_control_packet_into<Crypto>(
@@ -38,7 +45,7 @@ fn encrypt_control_packet_into<Crypto>(
     iv: &[u8],
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -76,13 +83,13 @@ fn decrypt_control_packet_into<Crypto>(
     generate_iv: impl FnOnce(u32, &mut [u8; 16]) -> usize,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
     if encrypted_packet.len() < EncryptedControlHeader::SIZE {
         warn!(packet = ?encrypted_packet, required_len = ?EncryptedControlHeader::SIZE, "dropping packet that is smaller than the encrypted control header");
-        return Err(ControlEncryptionError::PacketTooSmall);
+        return Err(ControlEncryptionError::PacketTooSmall.into());
     }
 
     // This is allowed because the size was checked
@@ -95,23 +102,23 @@ where
 
     if encrypted_header.ty != ENCRYPTED_CONTROL_PACKET_TYPE {
         warn!(encrypted_encrypted_header = ?encrypted_header, got_ty = encrypted_header.ty, expected_ty = ENCRYPTED_CONTROL_PACKET_TYPE, "dropping packet because of invalid packet type, expected encrypted header");
-        return Err(ControlEncryptionError::InvalidEncryptionHeaderPacketType);
+        return Err(ControlEncryptionError::InvalidEncryptionHeaderPacketType.into());
     }
 
     // 4 = sizeof(sequence_number) in EncryptedControlHeader
     const SUB_LEN: usize = 4 + ENCRYPTED_CONTROL_PACKET_AES_GCM_TAG_LENGTH;
     if encrypted_header.len < SUB_LEN as u16 {
         warn!(encrypted_header = ?encrypted_header, got_len = encrypted_header.len, required_len = SUB_LEN, "dropping packet because of invalid encryption header length");
-        return Err(ControlEncryptionError::InvalidEncryptionHeaderPacketType);
+        return Err(ControlEncryptionError::InvalidEncryptionHeaderPacketType.into());
     }
 
     let encrypted_payload = &encrypted_packet[EncryptedControlHeader::SIZE..];
     let expected_encrypted_payload_len = encrypted_header
         .payload_size()
-        .ok_or(ControlEncryptionError::EncryptionHeaderLengthTooSmall)?;
+        .ok_or::<Error>(ControlEncryptionError::EncryptionHeaderLengthTooSmall.into())?;
 
     if encrypted_payload.len() != expected_encrypted_payload_len as usize {
-        return Err(ControlEncryptionError::EncryptionHeaderLengthMismatch);
+        return Err(ControlEncryptionError::EncryptionHeaderLengthMismatch.into());
     }
 
     let mut iv = [0; _];
@@ -136,7 +143,7 @@ pub fn encrypt_clientbound_control_packet_into<Crypto>(
     sequence_number: u32,
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -164,7 +171,7 @@ pub fn decrypt_clientbound_control_packet_into<Crypto>(
     aes_key: AesKey,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -189,7 +196,7 @@ pub fn encrypt_serverbound_control_packet_into<Crypto>(
     sequence_number: u32,
     unencrypted_packet: &[u8],
     encrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {
@@ -217,7 +224,7 @@ pub fn decrypt_serverbound_control_packet_into<Crypto>(
     aes_key: AesKey,
     encrypted_packet: &[u8],
     unencrypted_packet: &mut [u8],
-) -> Result<usize, ControlEncryptionError>
+) -> Result<usize, Error>
 where
     Crypto: CryptoBackend,
 {

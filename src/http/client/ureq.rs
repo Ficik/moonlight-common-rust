@@ -1,7 +1,6 @@
 use std::{str::FromStr, sync::Arc};
 
 use pem::Pem;
-use thiserror::Error;
 use tracing::{debug, instrument, trace};
 use ureq::{
     Agent,
@@ -9,62 +8,48 @@ use ureq::{
     tls::{Certificate, ClientCert, PrivateKey, RootCerts, TlsConfig, TlsProvider},
 };
 
-use crate::http::{
-    ClientInfo, Endpoint, ParseError, TextResponse,
-    client::{
-        DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, RequestError, blocking_client::RequestClient,
-        hyperlike::build_url,
+use crate::{
+    error::Error,
+    http::{
+        ClientInfo, Endpoint, TextResponse,
+        client::{
+            DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, blocking_client::RequestClient,
+            hyperlike::build_url,
+        },
     },
 };
 
 pub type UreqClient = Config;
 
-#[derive(Debug, Error)]
-pub enum UreqError {
-    #[error("ureq: {0}")]
-    Ureq(#[from] ureq::Error),
-    #[error("parse: {0}")]
-    Parse(#[from] ParseError),
-    #[error("http: {0}")]
-    Http(#[from] http::Error),
-}
+impl From<ureq::Error> for Error {
+    fn from(value: ureq::Error) -> Self {
+        use ureq::Error;
 
-impl RequestError for UreqError {
-    fn is_connect(&self) -> bool {
-        matches!(
-            self,
-            Self::Ureq(ureq::Error::HostNotFound)
-                | Self::Ureq(ureq::Error::ConnectionFailed)
-                | Self::Ureq(ureq::Error::Io(_))
-        )
-    }
-    fn is_encryption(&self) -> bool {
-        matches!(self, Self::Ureq(ureq::Error::Tls(_)))
-    }
-}
-
-impl TryInto<ParseError> for UreqError {
-    type Error = Self;
-
-    fn try_into(self) -> Result<ParseError, Self::Error> {
-        match self {
-            Self::Parse(err) => Ok(err),
-            _ => Err(self),
+        match value {
+            Error::Timeout(_) => Self::ConnectionTimeout,
+            Error::TlsRequired => Self::Unauthenticated,
+            Error::HostNotFound => Self::ConnectionFailed,
+            Error::ConnectionFailed => Self::ConnectionFailed,
+            Error::StatusCode(code) => Self::StatusCode {
+                code: code as i32,
+                reason: Default::default(),
+            },
+            Error::Io(io) => Self::Io(io),
+            Error::Other(other) => Self::Other(other),
+            other => Self::Other(other.into()),
         }
     }
 }
 
 impl RequestClient for UreqClient {
-    type Error = UreqError;
-
-    fn with_defaults() -> Result<Self, Self::Error> {
+    fn with_defaults() -> Result<Self, Error> {
         let config = Agent::config_builder()
             .timeout_global(Some(DEFAULT_TIMEOUT))
             .build();
 
         Ok(config)
     }
-    fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
+    fn with_defaults_long_timeout() -> Result<Self, Error> {
         let config = Agent::config_builder()
             .timeout_global(Some(DEFAULT_LONG_TIMEOUT))
             .build();
@@ -84,7 +69,7 @@ impl RequestClient for UreqClient {
         client_private_key: &Pem,
         client_certificate: &Pem,
         server_certificate: &Pem,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Error> {
         let client_certificate = Certificate::from_der(client_certificate.contents()).to_owned();
         let client_private_key = PrivateKey::from_pem(client_private_key.to_string().as_bytes())?;
 
@@ -115,12 +100,12 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
-        let url = build_url::<E, UreqError>(false, client_info, hostport, request)?;
+        let url = build_url::<E>(false, client_info, hostport, request)?;
 
         debug!(url = %url,"sending request");
 
@@ -143,12 +128,12 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
-        let url = build_url::<E, UreqError>(true, client_info, hostport, request)?;
+        let url = build_url::<E>(true, client_info, hostport, request)?;
 
         debug!(url = %url,"sending request");
 
@@ -171,11 +156,11 @@ impl RequestClient for UreqClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint<Response = Vec<u8>>,
     {
-        let url = build_url::<E, UreqError>(true, client_info, hostport, request)?;
+        let url = build_url::<E>(true, client_info, hostport, request)?;
 
         debug!(url = %url,"sending request");
 

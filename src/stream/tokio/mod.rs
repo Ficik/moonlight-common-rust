@@ -1,6 +1,5 @@
 use sans_io_time::Instant as SansInstant;
-use std::{convert::Infallible, future::pending, io, pin::pin, time::Duration};
-use thiserror::Error;
+use std::{future::pending, pin::pin, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -10,55 +9,32 @@ use tokio::{
 };
 use tracing::{Level, debug, info, instrument, warn};
 
-use crate::stream::{
-    HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
-    audio::OpusMultistreamConfig,
-    control::EstimatedRttInfo,
-    proto::{
-        DynCryptoBackend, MoonlightStreamInput, MoonlightStreamProtoError, MoonlightStreamSetup,
-        MoonlightStreamSetupOutput,
-        audio::{AudioStream, AudioStreamError, AudioStreamEvent},
-        control::{
-            ControlStream, ControlStreamEvent, input_batcher::ClientInputEvent,
-            packet::ControlPacket, peer::ControlError,
+use crate::{
+    error::Error,
+    stream::{
+        HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
+        audio::OpusMultistreamConfig,
+        control::EstimatedRttInfo,
+        proto::{
+            DynCryptoBackend, MoonlightStreamInput, MoonlightStreamSetup,
+            MoonlightStreamSetupOutput,
+            audio::{AudioStream, AudioStreamEvent},
+            control::{
+                ControlStream, ControlStreamEvent, input_batcher::ClientInputEvent,
+                packet::ControlPacket,
+            },
+            microphone::foundation::FoundationMicStream,
+            video::{VideoStream, VideoStreamEvent},
         },
-        microphone::foundation::{FoundationMicStream, FoundationMicStreamError},
-        video::{VideoStream, VideoStreamError, VideoStreamEvent},
+        tokio::driver::StreamDriver,
+        video::{VideoCapabilities, VideoSetup},
     },
-    tokio::driver::StreamDriver,
-    video::{VideoCapabilities, VideoSetup},
 };
 
 mod driver;
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Error)]
-pub enum MoonlightStreamError {
-    #[error("io: {0}")]
-    Io(#[from] io::Error),
-    #[error("setup: {0}")]
-    Setup(#[from] MoonlightStreamProtoError),
-    #[error("audio: {0}")]
-    Audio(#[from] AudioStreamError),
-    #[error("video: {0}")]
-    Video(#[from] VideoStreamError),
-    #[error("control: {0}")]
-    Control(#[from] ControlError),
-    #[error("foundation mic: {0}")]
-    FoundationMic(#[from] FoundationMicStreamError),
-    #[error("connection timed out")]
-    ConnectionTimeout,
-    #[error("the stream was already closed")]
-    Closed,
-}
-
-impl From<Infallible> for MoonlightStreamError {
-    fn from(_: Infallible) -> Self {
-        unreachable!()
-    }
-}
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -101,7 +77,7 @@ impl MoonlightStream {
         settings: MoonlightStreamSettings,
         crypto_backend: DynCryptoBackend,
         video_capabilities: VideoCapabilities,
-    ) -> Result<Self, MoonlightStreamError> {
+    ) -> Result<Self, Error> {
         debug!(config = ?config, settings = ?settings, video_capabilities = ?video_capabilities, "stream connect");
 
         let base_time = Instant::now();
@@ -221,7 +197,7 @@ impl MoonlightStream {
         loop {
             select! {
                 _ = &mut sleep => {
-                    return Err(MoonlightStreamError::ConnectionTimeout);
+                    return Err(Error::ConnectionTimeout);
                 }
                 result = control_stream.drive() => {
                     let event = result?;
@@ -261,18 +237,18 @@ impl MoonlightStream {
         self.video_setup
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, ControlError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
         self.control_stream.stream().estimated_rtt()
     }
 
-    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), ControlError> {
+    pub fn send_input(&mut self, input: ClientInputEvent) -> Result<(), Error> {
         self.control_stream.stream_mut().batch_input(input)
     }
-    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), ControlError> {
+    pub fn send_raw(&mut self, packet: ControlPacket) -> Result<(), Error> {
         self.control_stream.stream_mut().send_raw(packet)
     }
 
-    pub fn disconnect(&mut self) -> Result<(), ControlError> {
+    pub fn disconnect(&mut self) -> Result<(), Error> {
         self.control_stream.stream_mut().disconnect(0)
     }
 
@@ -292,7 +268,7 @@ impl MoonlightStream {
         }
     }
 
-    pub async fn drive(&mut self) -> Result<MoonlightStreamEvent, MoonlightStreamError> {
+    pub async fn drive(&mut self) -> Result<MoonlightStreamEvent, Error> {
         select! {
             result = self.audio_stream.drive() => result.map(MoonlightStreamEvent::from),
             result = self.video_stream.drive() => result.map(MoonlightStreamEvent::from),

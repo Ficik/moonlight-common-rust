@@ -2,9 +2,16 @@ use std::{fmt, str::FromStr};
 
 use roxmltree::Document;
 
-use crate::http::{
-    Endpoint, ParseError, TextResponse, helper::parse_xml_child_text, launch::ClientStreamRequest,
+use crate::{
+    error::{Error, parse_u32},
+    http::{
+        Endpoint, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        launch::ClientStreamRequest,
+    },
 };
+
+const ERROR_CONTEXT: &str = "http xml: resume";
 
 /// Resumes a session that was already created using a request to [super::launch::LaunchEndpoint].
 pub struct ResumeEndpoint;
@@ -59,26 +66,26 @@ impl TextResponse for ResumeResponse {
 }
 
 impl FromStr for ResumeResponse {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let doc = Document::parse(s)?;
-        let root = doc
-            .root()
-            .children()
-            .find(|node| node.tag_name().name() == "root")
-            .ok_or(ParseError::XmlRootNotFound)?;
+        let root = parse_xml_root_node(&doc)?;
 
         let rtsp_session_url = match parse_xml_child_text(root, "sessionUrl0") {
             Ok(value) => Some(value.to_string()),
-            Err(ParseError::DetailNotFound(_)) => None,
+            Err(Error::MissingAttribute { .. }) => None,
             Err(err) => {
                 return Err(err);
             }
         };
 
         Ok(ResumeResponse {
-            resume: parse_xml_child_text(root, "resume")?.parse()?,
+            resume: parse_u32(
+                ERROR_CONTEXT,
+                "resume",
+                parse_xml_child_text(root, "resume")?,
+            )?,
             rtsp_session_url,
         })
     }

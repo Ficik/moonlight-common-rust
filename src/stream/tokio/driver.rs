@@ -13,8 +13,9 @@ use tokio::{
     time::{Instant, Sleep, sleep_until},
 };
 
-use crate::stream::{
-    proto::runtime::UdpStream, sockets::new_udp_socket, tokio::MoonlightStreamError,
+use crate::{
+    error::Error,
+    stream::{proto::runtime::UdpStream, sockets::new_udp_socket},
 };
 
 pub struct StreamDriver<Stream> {
@@ -28,7 +29,7 @@ impl<Stream> StreamDriver<Stream>
 where
     Stream: UdpStream,
 {
-    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, MoonlightStreamError> {
+    pub async fn new(base_time: Instant, stream: Stream) -> Result<Self, Error> {
         let socket = new_udp_socket(false, stream.recv_buffer_hint())?;
 
         socket.set_nonblocking(true)?;
@@ -76,9 +77,8 @@ pin_project! {
 impl<'a, Stream> Future for DriveFuture<'a, Stream>
 where
     Stream: UdpStream,
-    MoonlightStreamError: From<Stream::Error>,
 {
-    type Output = Result<Stream::Event, MoonlightStreamError>;
+    type Output = Result<Stream::Event, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();

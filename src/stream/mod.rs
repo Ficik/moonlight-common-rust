@@ -8,7 +8,7 @@ use num_derive::FromPrimitive;
 
 use crate::{
     ServerVersion,
-    high::StreamConfigError,
+    error::Error,
     http::{pair::PairingCryptoBackend, server_info::ApolloPermissions},
     stream::{
         audio::AudioConfig,
@@ -51,7 +51,7 @@ mod bindings;
 pub struct AesKey(pub [u8; 16]);
 
 impl AesKey {
-    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Crypto::Error>
+    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Error>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -88,7 +88,7 @@ impl Debug for AesKey {
 pub struct AesIv(pub u32);
 
 impl AesIv {
-    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Crypto::Error>
+    pub fn new_random<Crypto>(crypto_backend: &Crypto) -> Result<Self, Error>
     where
         Crypto: PairingCryptoBackend,
     {
@@ -218,11 +218,11 @@ impl MoonlightStreamSettings {
         version: ServerVersion,
         gfe_version: &str,
         server_codec_mode_support: ServerCodecModeSupport,
-    ) -> Result<(), StreamConfigError> {
+    ) -> Result<(), Error> {
         let supports_hdr = Self::is_hdr_supported(server_codec_mode_support);
 
         if self.hdr && !supports_hdr {
-            return Err(StreamConfigError::NotSupportedHdr);
+            return Err(Error::SettingHdrNotSupported);
         }
 
         self.check_resolution_supported(version, gfe_version, server_codec_mode_support)?;
@@ -264,21 +264,21 @@ impl MoonlightStreamSettings {
         version: ServerVersion,
         gfe_version: &str,
         server_codec_mode_support: ServerCodecModeSupport,
-    ) -> Result<(), StreamConfigError> {
+    ) -> Result<(), Error> {
         let resolution_above_4k = self.width > 4096 || self.height > 4096;
         let supports_4k = Self::is_4k_supported(version, server_codec_mode_support);
         let supports_4k_gfe = Self::is_4k_supported_gfe(gfe_version);
 
         if resolution_above_4k && !supports_4k {
-            return Err(StreamConfigError::NotSupported4k);
+            return Err(Error::Setting4kNotSupported);
         } else if resolution_above_4k
             && self
                 .supported_video_formats
                 .contains(!VideoFormats::MASK_H264)
         {
-            return Err(StreamConfigError::NotSupported4kCodecMissing);
+            return Err(Error::Setting4kNotSupportedCodecMissing);
         } else if self.height > 2160 && supports_4k_gfe {
-            return Err(StreamConfigError::NotSupported4kUpdateGfe);
+            return Err(Error::Setting4kNotSupportedUpdateGfe);
         }
 
         Ok(())

@@ -1,26 +1,9 @@
-use std::{error::Error, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
-use thiserror::Error;
+use crate::error::Error;
 
 #[cfg(test)]
 pub(crate) mod test;
-
-#[derive(Debug, Error)]
-#[error("{inner}")]
-pub struct CryptoError {
-    inner: Box<dyn Error + Send + Sync + 'static>,
-}
-
-impl CryptoError {
-    pub fn from_error<T>(value: T) -> Self
-    where
-        T: Error + Send + Sync + 'static,
-    {
-        Self {
-            inner: Box::new(value),
-        }
-    }
-}
 
 pub trait CryptoBackend: Debug + Send + Sync {
     /// Encrypt using AES-GCM.
@@ -32,7 +15,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         input: &[u8],
         output: &mut [u8],
         tag: &mut [u8],
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), Error>;
 
     /// Decrypt using AES-GCM.
     /// Verifies `tag` before returning plaintext length.
@@ -43,7 +26,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         input: &[u8],
         tag: &[u8],
         output: &mut [u8],
-    ) -> Result<(), CryptoError>;
+    ) -> Result<(), Error>;
 
     /// Encrypt using AES-CBC with PKCS7 padding.
     /// Returns number of bytes written after adding padding.
@@ -55,7 +38,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, CryptoError>;
+    ) -> Result<usize, Error>;
 
     /// Decrypt using AES-CBC with PKCS7 padding.
     /// Returns number of bytes written after unpadding.
@@ -67,7 +50,7 @@ pub trait CryptoBackend: Debug + Send + Sync {
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, CryptoError>;
+    ) -> Result<usize, Error>;
 }
 
 impl<T> CryptoBackend for Arc<T>
@@ -81,7 +64,7 @@ where
         input: &[u8],
         output: &mut [u8],
         tag: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), Error> {
         T::encrypt_aes_gcm(self, key, iv, input, output, tag)
     }
 
@@ -92,7 +75,7 @@ where
         input: &[u8],
         tag: &[u8],
         output: &mut [u8],
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), Error> {
         T::decrypt_aes_gcm(self, key, iv, input, tag, output)
     }
 
@@ -102,7 +85,7 @@ where
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, CryptoError> {
+    ) -> Result<usize, Error> {
         T::encrypt_aes_cbc(self, key, iv, input, output)
     }
 
@@ -112,7 +95,7 @@ where
         iv: &[u8],
         input: &[u8],
         output: &mut [u8],
-    ) -> Result<usize, CryptoError> {
+    ) -> Result<usize, Error> {
         T::decrypt_aes_cbc(self, key, iv, input, output)
     }
 }

@@ -24,8 +24,7 @@ use moonlight_common::{
 };
 
 use crate::{
-    MoonlightError, UdpTransmit, control_host::ControlError, control_packet::ControlPacket,
-    input_batcher::ClientInputEvent,
+    MoonlightError, UdpTransmit, control_packet::ControlPacket, input_batcher::ClientInputEvent,
 };
 
 #[remote(Enum)]
@@ -71,7 +70,7 @@ pub struct ControlStream {
 #[export]
 impl ControlStream {
     #[uniffi::constructor]
-    pub fn new(now: Instant, config: ControlStreamConfig) -> Result<Arc<Self>, ControlError> {
+    pub fn new(now: Instant, config: ControlStreamConfig) -> Result<Arc<Self>, MoonlightError> {
         let this = Arc::new(Self {
             inner: Mutex::new(ControlStream2::new(
                 now,
@@ -91,25 +90,25 @@ impl ControlStream {
         Ok(this)
     }
 
-    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, ControlError> {
+    pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, MoonlightError> {
         let inner = self.inner.lock().expect("lock AudioStream");
         let rtt = inner.estimated_rtt()?;
         Ok(rtt)
     }
 
-    pub fn batch_input(&self, input: ClientInputEvent) -> Result<(), ControlError> {
+    pub fn batch_input(&self, input: ClientInputEvent) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock AudioStream");
         inner.batch_input(input.into())?;
         Ok(())
     }
 
-    pub fn send_raw(&self, packet: ControlPacket) -> Result<(), ControlError> {
+    pub fn send_raw(&self, packet: ControlPacket) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlStream");
         inner.send_raw(packet.into())?;
         Ok(())
     }
 
-    pub fn disconnect(&self, disconnect_data: u32) -> Result<(), ControlError> {
+    pub fn disconnect(&self, disconnect_data: u32) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlStream");
         inner.disconnect(disconnect_data)?;
         Ok(())

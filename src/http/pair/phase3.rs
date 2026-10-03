@@ -2,11 +2,13 @@ use std::{fmt, str::FromStr};
 
 use roxmltree::Document;
 
-use crate::http::{
-    FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
-    TextResponse,
-    helper::{parse_xml_child_text, parse_xml_root_node},
-    pair::parse_xml_child_paired,
+use crate::{
+    error::{Error, parse_hex},
+    http::{
+        QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        pair::parse_xml_child_paired,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,17 +40,25 @@ impl Request for PairPhase3Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 3";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
         // let update_state: i32 = query_map.get("updateState")?.parse()?;
 
         let encrypted_challenge_hex = query_map.get("serverchallengeresp")?;
-        let encrypted_challenge_response_hash = hex::decode(encrypted_challenge_hex.as_bytes())?;
+        let encrypted_challenge_response_hash = hex::decode(encrypted_challenge_hex.as_bytes())
+            .map_err(|_| Error::InvalidAttribute {
+                context: ERROR_CONTEXT,
+                attribute: "serverchallengeresp",
+                expected: "hex bytes",
+                got: encrypted_challenge_hex.to_string(),
+            })?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -91,16 +101,18 @@ impl TextResponse for PairPhase3Response {
 }
 
 impl FromStr for PairPhase3Response {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: pair 3";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         let pairing_secret_str = parse_xml_child_text(root, "pairingsecret")?;
-        let pairing_secret = hex::decode(pairing_secret_str)?;
+        let pairing_secret = parse_hex(ERROR_CONTEXT, "pairingsecret", pairing_secret_str)?;
 
         Ok(PairPhase3Response {
             paired,

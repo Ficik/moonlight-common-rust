@@ -9,20 +9,20 @@ use std::{convert::Infallible, net::SocketAddr, time::Duration};
 
 use sans_io_time::Instant;
 
-use thiserror::Error;
 use tracing::{Level, instrument};
 
-use crate::stream::{
-    SunshineEncryption,
-    proto::{
-        DynCryptoBackend,
-        microphone::foundation::{
-            packet::FOUNDATION_MAX_MIC_PACKET_SIZE,
-            payloader::{
-                FoundationMicPayloader, FoundationMicPayloaderConfig, FoundationMicPayloaderError,
+use crate::{
+    error::Error,
+    stream::{
+        SunshineEncryption,
+        proto::{
+            DynCryptoBackend,
+            microphone::foundation::{
+                packet::FOUNDATION_MAX_MIC_PACKET_SIZE,
+                payloader::{FoundationMicPayloader, FoundationMicPayloaderConfig},
             },
+            runtime::UdpStream,
         },
-        runtime::UdpStream,
     },
 };
 
@@ -36,12 +36,6 @@ pub mod rtsp;
 
 #[cfg(test)]
 mod test;
-
-#[derive(Debug, Error)]
-pub enum FoundationMicStreamError {
-    #[error("payloader: {0}")]
-    Payloader(#[from] FoundationMicPayloaderError),
-}
 
 #[derive(Debug)]
 pub struct FoundationMicStreamConfig {
@@ -80,7 +74,7 @@ impl FoundationMicStream {
         &mut self,
         timestamp: Duration,
         frame: &[u8],
-    ) -> Result<(), FoundationMicStreamError> {
+    ) -> Result<(), Error> {
         self.payloader.push_frame(timestamp, frame)?;
 
         Ok(())
@@ -96,8 +90,6 @@ impl FoundationMicStream {
 }
 
 impl UdpStream for FoundationMicStream {
-    type Error = FoundationMicStreamError;
-
     type Event = Infallible;
 
     fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
@@ -126,11 +118,11 @@ impl UdpStream for FoundationMicStream {
         _now: Instant,
         _addr: SocketAddr,
         _data: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Error> {
         Ok(())
     }
 
-    fn handle_timeout(&mut self, _now: Instant) -> Result<(), Self::Error> {
+    fn handle_timeout(&mut self, _now: Instant) -> Result<(), Error> {
         Ok(())
     }
 }

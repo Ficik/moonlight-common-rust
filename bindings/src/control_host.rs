@@ -5,7 +5,6 @@ use std::{
 };
 
 use moonlight_common::{
-    ServerVersion,
     crypto::rustcrypto::RustCryptoBackend,
     stream::{
         control::EstimatedRttInfo,
@@ -14,49 +13,21 @@ use moonlight_common::{
             control::{
                 packet::{ControlPacketConfig, EnetChannel},
                 peer::{
-                    ControlConnectConfig as ControlConnectConfig2, ControlError as ControlError2,
-                    ControlHost as ControlHost2, ControlHostConfig as ControlHostConfig2,
-                    ControlHostEvent as ControlHostEvent2, ControlPeerConfig as ControlPeerConfig2,
-                    ControlPeerId, ControlPeerRole, PacketKind,
+                    ControlConnectConfig as ControlConnectConfig2, ControlHost as ControlHost2,
+                    ControlHostConfig as ControlHostConfig2, ControlHostEvent as ControlHostEvent2,
+                    ControlPeerConfig as ControlPeerConfig2, ControlPeerId, ControlPeerRole,
+                    PacketKind,
                 },
             },
             runtime::UdpStream,
         },
     },
 };
-use uniffi::{Enum, Error, Object, Record, custom_type, deps::anyhow::Error, export, remote};
+use uniffi::{Enum, Object, Record, custom_type, deps::anyhow::Error, export, remote};
 
 use crate::{
     MoonlightError, UdpTransmit, control_packet::ControlPacket, control_stream::ControlEncryption,
 };
-
-#[derive(Debug, thiserror::Error, Error)]
-pub enum ControlError {
-    #[error("this version of the protocol is not supported: {0}")]
-    VersionNotSupported(ServerVersion),
-    #[error("the control stream hasn't successfully connected yet")]
-    NotConnected,
-    #[error("packet not supported")]
-    PacketNotSupported,
-    #[error("the apollo permissions list doesn't allow this action")]
-    ApolloPermissionDenied,
-    #[error("{0}")]
-    Other(MoonlightError),
-}
-
-impl From<ControlError2> for ControlError {
-    fn from(value: ControlError2) -> Self {
-        match value {
-            ControlError2::VersionNotSupported(server_version) => {
-                Self::VersionNotSupported(server_version)
-            }
-            ControlError2::NotConnected => Self::NotConnected,
-            ControlError2::PacketNotSupported(_) => Self::PacketNotSupported,
-            ControlError2::ApolloPermissionDenied => Self::ApolloPermissionDenied,
-            err => Self::Other(err.into()),
-        }
-    }
-}
 
 custom_type!(ControlPeerId, u32, {
     remote,
@@ -188,13 +159,12 @@ pub struct ControlHost {
 #[export]
 impl ControlHost {
     #[uniffi::constructor]
-    pub fn new(now: Instant, config: ControlHostConfig) -> Result<Arc<Self>, ControlError> {
+    pub fn new(now: Instant, config: ControlHostConfig) -> Result<Arc<Self>, MoonlightError> {
         let this = Arc::new(Self {
-            inner: Mutex::new(ControlHost2::new(
-                now,
-                config.into(),
-                Arc::new(RustCryptoBackend),
-            )?),
+            inner: Mutex::new(
+                ControlHost2::new(now, config.into(), Arc::new(RustCryptoBackend))
+                    .map_err(moonlight_common::error::Error::from)?,
+            ),
         });
 
         Ok(this)
@@ -204,9 +174,11 @@ impl ControlHost {
         &self,
         id: ControlPeerId,
         config: ControlPeerConfig,
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
-        inner.configure_peer(id, config.into())?;
+        inner
+            .configure_peer(id, config.into())
+            .map_err(moonlight_common::error::Error::from)?;
         Ok(())
     }
 
@@ -214,7 +186,7 @@ impl ControlHost {
         &self,
         addr: SocketAddr,
         config: ControlConnectConfig,
-    ) -> Result<ControlPeerId, ControlError> {
+    ) -> Result<ControlPeerId, MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
         let id = inner.connect(addr, config.into())?;
         Ok(id)
@@ -226,7 +198,7 @@ impl ControlHost {
         channel_id: EnetChannel,
         kind: PacketKind,
         packet: ControlPacket,
-    ) -> Result<(), ControlError> {
+    ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
         inner.send(id, channel_id, kind, packet.into())?;
         Ok(())
@@ -258,13 +230,13 @@ impl ControlHost {
         inner.set_peer_timeout(peer, limit, minimum, maximum)
     }
 
-    pub fn disconnect(&self, id: ControlPeerId, data: u32) -> Result<(), ControlError> {
+    pub fn disconnect(&self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
         inner.disconnect(id, data)?;
         Ok(())
     }
 
-    pub fn disconnect_now(&self, id: ControlPeerId, data: u32) -> Result<(), ControlError> {
+    pub fn disconnect_now(&self, id: ControlPeerId, data: u32) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
         inner.disconnect_now(id, data)?;
         Ok(())

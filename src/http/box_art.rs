@@ -1,7 +1,8 @@
 use crate::{
     AppId,
+    error::{Error, parse_i32, parse_u32},
     http::{
-        Endpoint, FromQueryError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
         helper::u32_to_str,
     },
 };
@@ -56,14 +57,16 @@ impl Request for AppBoxArtRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
-        let app_id = query_map.get("appid")?.parse().map(AppId)?;
+        const ERROR_CONTEXT: &str = "http query: box art";
 
-        let asset_type: i32 = query_map.get("AssetType")?.parse()?;
-        let asset_idx: i32 = query_map.get("AssetIdx")?.parse()?;
+        let app_id = parse_u32(ERROR_CONTEXT, "appid", &query_map.get("appid")?).map(AppId)?;
+
+        let asset_type: i32 = parse_i32(ERROR_CONTEXT, "AssetType", &query_map.get("AssetType")?)?;
+        let asset_idx: i32 = parse_i32(ERROR_CONTEXT, "AssetIdx", &query_map.get("AssetIdx")?)?;
 
         Ok(Self {
             app_id,

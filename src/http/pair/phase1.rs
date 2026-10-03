@@ -3,11 +3,13 @@ use std::{fmt, str::FromStr};
 use pem::Pem;
 use roxmltree::Document;
 
-use crate::http::{
-    FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request,
-    TextResponse,
-    helper::{parse_xml_child_text, parse_xml_root_node},
-    pair::{SALT_LENGTH, parse_xml_child_paired},
+use crate::{
+    error::{Error, parse_error, parse_hex, parse_pem},
+    http::{
+        QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request, TextResponse,
+        helper::{parse_xml_child_text, parse_xml_root_node},
+        pair::{SALT_LENGTH, parse_xml_child_paired},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,10 +54,12 @@ impl Request for PairPhase1Request {
     }
 
     /// It is expected that "phrase"="getservercert"
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
+        const ERROR_CONTEXT: &str = "http query: pair 1";
+
         let device_name = query_map.get("devicename")?;
 
         // TODO: check update_state?
@@ -63,12 +67,19 @@ impl Request for PairPhase1Request {
 
         let salt_str = query_map.get("salt")?;
         let mut salt = [0; _];
-        hex::decode_to_slice(salt_str.as_bytes(), &mut salt)?;
+        hex::decode_to_slice(salt_str.as_bytes(), &mut salt).map_err(|_| {
+            parse_error(
+                ERROR_CONTEXT,
+                "salt",
+                "valid hex bytes that resolve to 16 bytes",
+                salt_str.to_string(),
+            )
+        })?;
 
         let client_cert_pem_hex = query_map.get("salt")?;
-        let client_certificate_pem = hex::decode(client_cert_pem_hex.as_bytes())?;
-        let client_certificate_str = str::from_utf8(&client_certificate_pem)?;
-        let client_certificate = Pem::from_str(client_certificate_str)?;
+        let client_certificate_pem = parse_hex(ERROR_CONTEXT, "salt", &client_cert_pem_hex)?;
+        let client_certificate_str = String::from_utf8_lossy(&client_certificate_pem);
+        let client_certificate = parse_pem(ERROR_CONTEXT, "salt", &client_certificate_str)?;
 
         Ok(Self {
             device_name: device_name.into_owned(),
@@ -112,23 +123,25 @@ impl TextResponse for PairPhase1Response {
 }
 
 impl FromStr for PairPhase1Response {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: pair 1";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
-        let paired = parse_xml_child_paired(root)?;
+        let paired = parse_xml_child_paired(ERROR_CONTEXT, root)?;
 
         let certificate = match parse_xml_child_text(root, "plaincert") {
             Ok(value) => {
-                let value = hex::decode(value)?;
-                let str = String::from_utf8(value)?;
+                let value = parse_hex(ERROR_CONTEXT, "plaincert", value)?;
+                let str = String::from_utf8_lossy(&value);
 
-                let pem = Pem::from_str(&str)?;
+                let pem = parse_pem(ERROR_CONTEXT, "plaincert", &str)?;
                 Some(pem)
             }
-            Err(ParseError::DetailNotFound("plaincert")) => None,
+            Err(Error::MissingAttribute { .. }) => None,
             Err(err) => return Err(err),
         };
 

@@ -2,7 +2,12 @@ use std::str::FromStr;
 
 use sdp_types::Session;
 
-use crate::webrtc::{WebRTCParseError, bool_str, parse_bool, push};
+use crate::{
+    error::{Error, parse_number_as_bool},
+    webrtc::{bool_to_number_str, push},
+};
+
+const ERROR_CONTEXT: &str = "webrtc sdp answer";
 
 pub struct WebRTCSessionAnswer {
     /// The name of the app that was started.
@@ -12,7 +17,7 @@ pub struct WebRTCSessionAnswer {
 }
 
 impl FromStr for WebRTCSessionAnswer {
-    type Err = WebRTCParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let session = Session::parse(s.as_bytes())?;
@@ -22,7 +27,7 @@ impl FromStr for WebRTCSessionAnswer {
 }
 
 impl WebRTCSessionAnswer {
-    pub fn from_sdp(session: &Session) -> Result<Self, WebRTCParseError> {
+    pub fn from_sdp(session: &Session) -> Result<Self, Error> {
         let mut app_name = None;
         let mut microphone = false;
 
@@ -34,7 +39,8 @@ impl WebRTCSessionAnswer {
             match attr.attribute.as_str() {
                 "x-moonlight-app-name" => app_name = attr.value.clone(),
                 "x-moonlight-microphone" => {
-                    microphone = parse_bool("x-moonlight-microphone", value)?;
+                    microphone =
+                        parse_number_as_bool(ERROR_CONTEXT, "x-moonlight-microphone", value)?;
                 }
                 _ => {}
             }
@@ -51,7 +57,7 @@ impl WebRTCSessionAnswer {
             push(session, "x-moonlight-app-name", app_name);
         }
         if self.microphone {
-            push(session, "x-moonlight-microphone", bool_str(true));
+            push(session, "x-moonlight-microphone", bool_to_number_str(true));
         }
     }
 }

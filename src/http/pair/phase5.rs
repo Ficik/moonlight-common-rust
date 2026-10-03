@@ -1,4 +1,7 @@
-use crate::http::{FromQueryError, QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request};
+use crate::{
+    error::Error,
+    http::{QueryBuilder, QueryBuilderError, QueryMap, QueryParam, Request},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PairPhase5Request {
@@ -26,7 +29,7 @@ impl Request for PairPhase5Request {
         Ok(())
     }
 
-    fn from_query_params<Q>(query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {

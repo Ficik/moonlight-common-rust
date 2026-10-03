@@ -7,20 +7,23 @@ use std::{
 use fec_rs::ReedSolomon;
 use thiserror::Error;
 
-use crate::stream::{
-    SunshineEncryption,
-    audio::AudioFrame,
-    proto::{
-        DynCryptoBackend,
-        audio::{
-            create_audio_reed_solomon,
-            packet::{
-                AudioFecHeader, INVALID_OPUS_HEADER, RTP_AUDIO_DATA_SHARDS, RTP_AUDIO_HEADER,
-                RTP_AUDIO_TOTAL_SHARDS, RTP_PAYLOAD_TYPE_AUDIO, RTP_PAYLOAD_TYPE_AUDIO_FEC,
-                RtpAudioHeader,
+use crate::{
+    error::Error,
+    stream::{
+        SunshineEncryption,
+        audio::AudioFrame,
+        proto::{
+            DynCryptoBackend,
+            audio::{
+                create_audio_reed_solomon,
+                packet::{
+                    AudioFecHeader, INVALID_OPUS_HEADER, RTP_AUDIO_DATA_SHARDS, RTP_AUDIO_HEADER,
+                    RTP_AUDIO_TOTAL_SHARDS, RTP_PAYLOAD_TYPE_AUDIO, RTP_PAYLOAD_TYPE_AUDIO_FEC,
+                    RtpAudioHeader,
+                },
             },
+            crypto::{CryptoBackend, round_to_pkcs7_safe_len},
         },
-        crypto::{CryptoBackend, CryptoError, round_to_pkcs7_safe_len},
     },
 };
 
@@ -32,8 +35,12 @@ pub enum AudioDepayloaderError {
     BufferTooSmall,
     #[error("reed solomon: {0}")]
     ReedSolomon(#[from] fec_rs::Error),
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
+}
+
+impl From<AudioDepayloaderError> for Error {
+    fn from(value: AudioDepayloaderError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 // TODO: make a cap for the amount of fec packets and the amount of packets that can be buffered

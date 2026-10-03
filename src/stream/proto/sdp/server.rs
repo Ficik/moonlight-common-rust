@@ -1,11 +1,13 @@
-use crate::stream::{
-    RawHostFeatures, VideoFormats,
-    audio::OpusMultistreamConfig,
-    proto::{
-        rtsp::moonlight::ParseMoonlightRtspResponseError,
-        sdp::{Sdp, client::SunshineEncryptionFlags},
+use crate::{
+    error::{Error, parse_u32},
+    stream::{
+        RawHostFeatures, VideoFormats,
+        audio::OpusMultistreamConfig,
+        proto::sdp::{Sdp, client::SunshineEncryptionFlags},
     },
 };
+
+const ERROR_CONTEXT: &str = "parse server sdp";
 
 #[derive(Debug, Default)]
 pub struct ServerSdp {
@@ -31,7 +33,7 @@ pub struct ServerSdp {
 }
 
 impl ServerSdp {
-    pub fn parse(sdp: Sdp) -> Result<Self, ParseMoonlightRtspResponseError> {
+    pub fn parse(sdp: Sdp) -> Result<Self, Error> {
         let mut parsed = ServerSdp {
             // H264 is support on every server by default
             // See https://github.com/moonlight-stream/moonlight-common-c/blob/b126e481a195fdc7152d211def17190e3434bcce/src/RtspConnection.c#L1115
@@ -43,18 +45,29 @@ impl ServerSdp {
             if attribute.key == "x-ss-general.featureFlags"
                 && let Some(value) = attribute.value
             {
-                parsed.sunshine_feature_flags =
-                    Some(RawHostFeatures::from_bits_retain(value.parse()?));
+                parsed.sunshine_feature_flags = Some(RawHostFeatures::from_bits_retain(parse_u32(
+                    ERROR_CONTEXT,
+                    "x-ss-general.featureFlags",
+                    &value,
+                )?));
             } else if attribute.key == "x-ss-general.encryptionSupported"
                 && let Some(value) = attribute.value
             {
                 parsed.sunshine_encryption_supported =
-                    Some(SunshineEncryptionFlags::from_bits_truncate(value.parse()?));
+                    Some(SunshineEncryptionFlags::from_bits_truncate(parse_u32(
+                        ERROR_CONTEXT,
+                        "x-ss-general.encryptionSupported",
+                        &value,
+                    )?));
             } else if attribute.key == "x-ss-general.encryptionRequested"
                 && let Some(value) = attribute.value
             {
                 parsed.sunshine_encryption_requested =
-                    Some(SunshineEncryptionFlags::from_bits_truncate(value.parse()?));
+                    Some(SunshineEncryptionFlags::from_bits_truncate(parse_u32(
+                        ERROR_CONTEXT,
+                        "x-ss-general.encryptionRequested",
+                        &value,
+                    )?));
             } else if attribute.key == "sprop-parameter-sets=AAAAAU" {
                 // The RTSP DESCRIBE reply will contain a collection of SDP media attributes that
                 // describe the various supported video stream formats and include the SPS, PPS,

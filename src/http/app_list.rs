@@ -4,8 +4,9 @@ use roxmltree::Document;
 
 use crate::{
     App, AppId,
+    error::{Error, parse_u32},
     http::{
-        Endpoint, ParseError, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
         helper::{parse_xml_child_text, parse_xml_root_node},
     },
 };
@@ -35,7 +36,7 @@ impl Request for AppListRequest {
     ) -> Result<(), QueryBuilderError> {
         Ok(())
     }
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, super::FromQueryError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -83,9 +84,11 @@ impl TextResponse for AppListResponse {
 }
 
 impl FromStr for AppListResponse {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: app list";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
@@ -97,12 +100,18 @@ impl FromStr for AppListResponse {
         {
             let title = parse_xml_child_text(app_node, "AppTitle")?.to_string();
 
-            let id = parse_xml_child_text(app_node, "ID")?.parse().map(AppId)?;
+            let id = parse_u32(
+                ERROR_CONTEXT,
+                "App.ID",
+                parse_xml_child_text(app_node, "ID")?,
+            )
+            .map(AppId)?;
 
-            let is_hdr_supported = parse_xml_child_text(app_node, "IsHdrSupported")
-                .unwrap_or("0")
-                .parse::<u32>()?
-                == 1;
+            let is_hdr_supported = parse_u32(
+                ERROR_CONTEXT,
+                "App.IsHdrSupported",
+                parse_xml_child_text(app_node, "IsHdrSupported").unwrap_or("0"),
+            )? != 0;
 
             let app = App {
                 id,

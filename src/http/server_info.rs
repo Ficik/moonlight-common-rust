@@ -7,9 +7,12 @@ use uuid::Uuid;
 
 use crate::{
     ServerState, ServerType, ServerVersion,
+    error::{
+        Error, parse_ipv4, parse_mac, parse_number_as_bool, parse_server_state,
+        parse_server_version, parse_u16, parse_u32, parse_uuid,
+    },
     http::{
-        Endpoint, FromQueryError, ParseError, QueryBuilder, QueryBuilderError, QueryMap, Request,
-        TextResponse,
+        Endpoint, QueryBuilder, QueryBuilderError, QueryMap, Request, TextResponse,
         helper::{
             fmt_write_to_buffer, parse_xml_child_text, parse_xml_root_node, serialize_text_xml,
         },
@@ -48,7 +51,7 @@ impl Request for ServerInfoRequest {
     ) -> Result<(), QueryBuilderError> {
         Ok(())
     }
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -281,16 +284,18 @@ impl TextResponse for ServerInfoResponse {
 }
 
 impl FromStr for ServerInfoResponse {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        const ERROR_CONTEXT: &str = "http xml: server info";
+
         let doc = Document::parse(s)?;
         let root = parse_xml_root_node(&doc)?;
 
         let state_string = parse_xml_child_text(root, "state")?.to_string();
 
         let mac = match parse_xml_child_text(root, "mac") {
-            Ok(mac) => match mac.parse()? {
+            Ok(mac) => match parse_mac(ERROR_CONTEXT, "mac", mac)? {
                 mac if mac == MacAddress::from_bytes([0u8; 6]) => None,
                 mac => Some(mac),
             },
@@ -305,7 +310,8 @@ impl FromStr for ServerInfoResponse {
                 if external_port.is_empty() {
                     None
                 } else {
-                    let external_port: u16 = external_port.parse()?;
+                    let external_port: u16 =
+                        parse_u16(ERROR_CONTEXT, "ExternalPort", external_port)?;
 
                     Some(external_port)
                 }
@@ -316,16 +322,24 @@ impl FromStr for ServerInfoResponse {
             }
         };
 
-        let mut app_version: ServerVersion = parse_xml_child_text(root, "appversion")?.parse()?;
+        let mut app_version = parse_server_version(
+            ERROR_CONTEXT,
+            "appversion",
+            parse_xml_child_text(root, "appversion")?,
+        )?;
 
         let apollo_game_uuid = match parse_xml_child_text(root, "currentgameuuid") {
-            Ok(value) => Some(Some(value.parse()?)),
-            Err(ParseError::XmlTextNotFound(_)) => Some(None),
+            Ok(value) => Some(Some(parse_uuid(ERROR_CONTEXT, "currentgameuuid", value)?)),
+            Err(Error::InvalidAttribute { .. }) => Some(None),
             Err(_) => None,
         };
         // https://github.com/ClassicOldSong/Apollo/blob/a40b179886856bba1dfe311f430a25b9f3c44390/src/nvhttp.cpp#L931
         let apollo_permissions = match parse_xml_child_text(root, "Permission") {
-            Ok(permissions) => Some(ApolloPermissions::from_bits_truncate(permissions.parse()?)),
+            Ok(permissions) => Some(ApolloPermissions::from_bits_truncate(parse_u32(
+                ERROR_CONTEXT,
+                "Permission",
+                permissions,
+            )?)),
             Err(_) => None,
         };
         if apollo_permissions.is_some() || apollo_game_uuid.is_some() {
@@ -364,19 +378,45 @@ impl FromStr for ServerInfoResponse {
             app_version,
             gfe_version: parse_xml_child_text(root, "GfeVersion")?.to_string(),
             foundation_sunshine_version,
-            unique_id: parse_xml_child_text(root, "uniqueid")?.parse()?,
-            https_port: parse_xml_child_text(root, "HttpsPort")?.parse()?,
+            unique_id: parse_uuid(
+                ERROR_CONTEXT,
+                "unique_id",
+                parse_xml_child_text(root, "uniqueid")?,
+            )?,
+            https_port: parse_u16(
+                ERROR_CONTEXT,
+                "HttpsPort",
+                parse_xml_child_text(root, "HttpsPort")?,
+            )?,
             external_port,
-            max_luma_pixels_hevc: parse_xml_child_text(root, "MaxLumaPixelsHEVC")?.parse()?,
+            max_luma_pixels_hevc: parse_u32(
+                ERROR_CONTEXT,
+                "MaxLumaPixelsHEVC",
+                parse_xml_child_text(root, "MaxLumaPixelsHEVC")?,
+            )?,
             mac,
-            local_ip: parse_xml_child_text(root, "LocalIP")?.parse()?,
-            server_codec_mode_support: ServerCodecModeSupport::from_bits_retain(
-                parse_xml_child_text(root, "ServerCodecModeSupport")?.parse()?,
-            ),
-            paired: parse_xml_child_text(root, "PairStatus")?.parse::<u32>()? != 0,
-            current_game: parse_xml_child_text(root, "currentgame")?.parse()?,
+            local_ip: parse_ipv4(
+                ERROR_CONTEXT,
+                "LocalIP",
+                parse_xml_child_text(root, "LocalIP")?,
+            )?,
+            server_codec_mode_support: ServerCodecModeSupport::from_bits_retain(parse_u32(
+                ERROR_CONTEXT,
+                "ServerCodecModeSupport",
+                parse_xml_child_text(root, "ServerCodecModeSupport")?,
+            )?),
+            paired: parse_number_as_bool(
+                ERROR_CONTEXT,
+                "paired",
+                parse_xml_child_text(root, "PairStatus")?,
+            )?,
+            current_game: parse_u32(
+                ERROR_CONTEXT,
+                "currentgame",
+                parse_xml_child_text(root, "currentgame")?,
+            )?,
             // TODO: moonshine can be detected like that: https://github.com/hgaiser/moonshine/blob/91602b5bcfed0a5189d97ed3e8ca6bf6bcae0ca0/moonshine-core/src/webserver/mod.rs#L591-L596
-            state: ServerState::from_str(&state_string)?,
+            state: parse_server_state(ERROR_CONTEXT, "state", &state_string)?,
             apollo_permissions,
             apollo_game_uuid,
             foundation_app_list_etag,

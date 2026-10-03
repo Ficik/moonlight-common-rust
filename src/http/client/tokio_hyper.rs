@@ -18,61 +18,39 @@ use rustls::{
         CertificateDer, PrivateKeyDer, ServerName, UnixTime,
         pem::{PemObject, SectionKind},
     },
-    server::VerifierBuilderError,
 };
-use thiserror::Error;
 use tracing::{Level, debug, instrument};
 
-use crate::http::{
-    ClientInfo, Endpoint, ParseError, TextResponse,
-    client::{
-        DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, RequestError, async_client::RequestClient,
-        hyperlike::build_url,
+use crate::{
+    error::Error,
+    http::{
+        ClientInfo, Endpoint, TextResponse,
+        client::{
+            DEFAULT_LONG_TIMEOUT, DEFAULT_TIMEOUT, async_client::RequestClient,
+            hyperlike::build_url,
+        },
     },
 };
 
-#[derive(Debug, Error)]
-pub enum HyperError {
-    #[error("hyper client: {0}")]
-    HyperClient(#[from] hyper_util::client::legacy::Error),
-    #[error("hyper: {0}")]
-    Hyper(#[from] hyper::Error),
-    #[error("rustls: {0}")]
-    Rustls(#[from] rustls::Error),
-    #[error("webpki build server certificate verifier: {0}")]
-    WebPkiBuildVerifier(#[from] VerifierBuilderError),
-    #[error("awc client tried to use an invalid private key")]
-    InvalidPrivateKey,
-    #[error("response: {0}")]
-    Parse(#[from] ParseError),
-    #[error("http: {0}")]
-    Http(#[from] http::Error),
-}
+impl From<hyper::Error> for Error {
+    fn from(value: hyper::Error) -> Self {
+        if value.is_timeout() {
+            return Self::ConnectionTimeout;
+        } else if value.is_shutdown() || value.is_canceled() || value.is_closed() {
+            return Self::ConnectionFailed;
+        }
 
-impl RequestError for HyperError {
-    fn is_connect(&self) -> bool {
-        match self {
-            Self::HyperClient(err) => err.is_connect(),
-            Self::Hyper(err) => err.is_timeout(),
-            _ => false,
-        }
-    }
-    fn is_encryption(&self) -> bool {
-        match self {
-            Self::Hyper(err) => err.is_incomplete_message() || err.is_parse(),
-            _ => false,
-        }
+        Self::Other(value.into())
     }
 }
-
-impl TryInto<ParseError> for HyperError {
-    type Error = Self;
-
-    fn try_into(self) -> Result<ParseError, Self::Error> {
-        match self {
-            Self::Parse(parse) => Ok(parse),
-            _ => Err(self),
-        }
+impl From<hyper_util::client::legacy::Error> for Error {
+    fn from(_value: hyper_util::client::legacy::Error) -> Self {
+        Self::ConnectionFailed
+    }
+}
+impl From<rustls::Error> for Error {
+    fn from(value: rustls::Error) -> Self {
+        Self::Other(value.into())
     }
 }
 
@@ -146,7 +124,7 @@ fn build_client(
         .build(https_connector)
 }
 
-async fn response_to_bytes(mut response: Response<Incoming>) -> Result<Vec<u8>, HyperError> {
+async fn response_to_bytes(mut response: Response<Incoming>) -> Result<Vec<u8>, Error> {
     let mut bytes = Vec::new();
 
     // Stream the body, writing each chunk to our response buffer
@@ -166,15 +144,13 @@ pub struct TokioHyperClient {
 }
 
 impl RequestClient for TokioHyperClient {
-    type Error = HyperError;
-
-    fn with_defaults_long_timeout() -> Result<Self, Self::Error> {
+    fn with_defaults_long_timeout() -> Result<Self, Error> {
         let client = build_client(build_empty_rustls_connector(DEFAULT_LONG_TIMEOUT));
 
         Ok(Self { client })
     }
 
-    fn with_defaults() -> Result<Self, Self::Error> {
+    fn with_defaults() -> Result<Self, Error> {
         let client = build_client(build_empty_rustls_connector(DEFAULT_TIMEOUT));
 
         Ok(Self { client })
@@ -186,16 +162,18 @@ impl RequestClient for TokioHyperClient {
         client_private_key: &pem::Pem,
         client_certificate: &pem::Pem,
         server_certificate: &pem::Pem,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Error> {
         // Client
         if !client_private_key.tag().eq_ignore_ascii_case("PRIVATE KEY") {
-            return Err(HyperError::InvalidPrivateKey);
+            return Err(Error::Other("".into()));
         }
         let private_key = PrivateKeyDer::from_pem(
             SectionKind::PrivateKey,
             client_private_key.contents().to_vec(),
         )
-        .ok_or(HyperError::InvalidPrivateKey)?
+        .ok_or(Error::Other(
+            "invalid private key".to_string().into(),
+        ))?
         .clone_key();
 
         let certificate = CertificateDer::from_slice(client_certificate.contents()).into_owned();
@@ -217,8 +195,12 @@ impl RequestClient for TokioHyperClient {
         let verifier = NoHostnameVerifier {
             // The builder doesn't store the Arc reference anywhere so we can move the value out of the Arc
             #[allow(clippy::unwrap_used)]
-            base: Arc::try_unwrap(WebPkiServerVerifier::builder(root_certificates).build()?)
-                .unwrap(),
+            base: Arc::try_unwrap(
+                WebPkiServerVerifier::builder(root_certificates)
+                    .build()
+                    .map_err(Error::other)?,
+            )
+            .unwrap(),
         };
         config
             .dangerous()
@@ -243,13 +225,13 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Request: Sync,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
-        let url = build_url::<E, HyperError>(false, client_info, hostport, request)?;
+        let url = build_url::<E>(false, client_info, hostport, request)?;
 
         debug!(url = %url, "sending request");
 
@@ -259,7 +241,7 @@ impl RequestClient for TokioHyperClient {
 
         debug!(response = ?response_text, "received response");
 
-        Ok(E::Response::from_str(&response_text)?)
+        E::Response::from_str(&response_text)
     }
 
     #[instrument(level = Level::DEBUG, skip(self, request), fields(path = E::path()), err)]
@@ -268,13 +250,13 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint,
         E::Request: Sync,
-        E::Response: TextResponse<Err = ParseError>,
+        E::Response: TextResponse,
     {
-        let url = build_url::<E, HyperError>(true, client_info, hostport, request)?;
+        let url = build_url::<E>(true, client_info, hostport, request)?;
 
         debug!(url = %url, "sending request");
 
@@ -284,7 +266,7 @@ impl RequestClient for TokioHyperClient {
 
         debug!(response = ?response_text, "received response");
 
-        Ok(E::Response::from_str(&response_text)?)
+        E::Response::from_str(&response_text)
     }
 
     #[instrument(level = Level::DEBUG, skip(self, request), fields(path = E::path()), err)]
@@ -293,12 +275,12 @@ impl RequestClient for TokioHyperClient {
         client_info: ClientInfo,
         hostport: &str,
         request: &E::Request,
-    ) -> Result<E::Response, Self::Error>
+    ) -> Result<E::Response, Error>
     where
         E: Endpoint<Response = Vec<u8>>,
         E::Request: Sync,
     {
-        let url = build_url::<E, HyperError>(true, client_info, hostport, request)?;
+        let url = build_url::<E>(true, client_info, hostport, request)?;
 
         debug!(url = %url, "sending request");
 

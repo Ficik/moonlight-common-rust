@@ -1,7 +1,8 @@
 use std::{fmt, str::FromStr};
 
-use crate::http::{
-    Endpoint, FromQueryError, ParseError, QueryBuilderError, QueryMap, Request, TextResponse,
+use crate::{
+    error::Error,
+    http::{Endpoint, QueryBuilderError, QueryMap, Request, TextResponse},
 };
 
 /// This endpoint is only used to terminate a pairing attempt
@@ -35,7 +36,7 @@ impl Request for UnpairRequest {
         Ok(())
     }
 
-    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, FromQueryError>
+    fn from_query_params<Q>(_query_map: &Q) -> Result<Self, Error>
     where
         Q: QueryMap,
     {
@@ -53,7 +54,7 @@ impl TextResponse for UnpairResponse {
 }
 
 impl FromStr for UnpairResponse {
-    type Err = ParseError;
+    type Err = Error;
 
     fn from_str(_s: &str) -> Result<Self, Self::Err> {
         Ok(Self {})

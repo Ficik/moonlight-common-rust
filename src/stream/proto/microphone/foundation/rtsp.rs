@@ -1,9 +1,10 @@
 use crate::{
     ServerVersion,
+    error::Error,
     stream::proto::{
         packet::SunshinePing,
         rtsp::{
-            moonlight::{ParseMoonlightRtspResponseError, RtspSetupRequest, RtspSetupResponse},
+            moonlight::{RtspSetupRequest, RtspSetupResponse},
             raw::{RtspAddr, RtspRequest, RtspResponse},
         },
     },
@@ -41,13 +42,11 @@ pub struct RtspSetupFoundationMicResponse {
 }
 
 impl RtspSetupFoundationMicResponse {
-    pub fn try_from_response(
-        response: &RtspResponse,
-    ) -> Result<Self, ParseMoonlightRtspResponseError> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<Self, Error> {
         if response.message.status_code / 100 != 2 {
-            return Err(ParseMoonlightRtspResponseError::StatusCode {
-                message: Some(response.message.status_message.clone()),
-                code: response.message.status_code as i32,
+            return Err(Error::StatusCode {
+                code: response.message.status_code,
+                reason: response.message.status_message.clone(),
             });
         }
 

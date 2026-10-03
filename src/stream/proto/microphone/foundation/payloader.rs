@@ -2,14 +2,17 @@ use std::{collections::VecDeque, time::Duration};
 
 use thiserror::Error;
 
-use crate::stream::{
-    SunshineEncryption,
-    proto::{
-        DynCryptoBackend,
-        crypto::{CryptoBackend, CryptoError, round_to_pkcs7_safe_len},
-        microphone::foundation::packet::{
-            FOUNDATION_MAX_MIC_PACKET_SIZE, FOUNDATION_MIC_HEADER_FLAGS, FOUNDATION_MIC_IV_LEN,
-            FOUNDATION_MIC_MAGIC, FOUNDATION_MIC_PACKET_TYPE_OPUS, FoundationMicHeader,
+use crate::{
+    error::Error,
+    stream::{
+        SunshineEncryption,
+        proto::{
+            DynCryptoBackend,
+            crypto::{CryptoBackend, round_to_pkcs7_safe_len},
+            microphone::foundation::packet::{
+                FOUNDATION_MAX_MIC_PACKET_SIZE, FOUNDATION_MIC_HEADER_FLAGS, FOUNDATION_MIC_IV_LEN,
+                FOUNDATION_MIC_MAGIC, FOUNDATION_MIC_PACKET_TYPE_OPUS, FoundationMicHeader,
+            },
         },
     },
 };
@@ -18,8 +21,12 @@ use crate::stream::{
 pub enum FoundationMicPayloaderError {
     #[error("the mic packet exceeded the maximum size of {FOUNDATION_MAX_MIC_PACKET_SIZE}")]
     PacketTooLarge,
-    #[error("crypto: {0}")]
-    Crypto(#[from] CryptoError),
+}
+
+impl From<FoundationMicPayloaderError> for Error {
+    fn from(value: FoundationMicPayloaderError) -> Self {
+        Self::Other(value.into())
+    }
 }
 
 #[derive(Debug)]
@@ -50,11 +57,7 @@ impl FoundationMicPayloader {
         }
     }
 
-    pub fn push_frame(
-        &mut self,
-        timestamp: Duration,
-        frame: &[u8],
-    ) -> Result<(), FoundationMicPayloaderError> {
+    pub fn push_frame(&mut self, timestamp: Duration, frame: &[u8]) -> Result<(), Error> {
         let safe_len = if self.config.encryption.is_some() {
             FoundationMicHeader::SIZE + round_to_pkcs7_safe_len(frame.len())
         } else {
@@ -96,12 +99,12 @@ impl FoundationMicPayloader {
 
             // Check bounds
             if packet.len() > FOUNDATION_MAX_MIC_PACKET_SIZE {
-                return Err(FoundationMicPayloaderError::PacketTooLarge);
+                return Err(FoundationMicPayloaderError::PacketTooLarge.into());
             }
         } else {
             // Check bounds
             if packet.len() > FOUNDATION_MAX_MIC_PACKET_SIZE {
-                return Err(FoundationMicPayloaderError::PacketTooLarge);
+                return Err(FoundationMicPayloaderError::PacketTooLarge.into());
             }
 
             // just plaintext copy
