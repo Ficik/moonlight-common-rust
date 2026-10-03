@@ -3,7 +3,7 @@ use std::str::FromStr;
 use uniffi::{Record, export, remote};
 
 use moonlight_common::webrtc::{
-    WebRTCParseError, answer::WebRTCSessionAnswer, header::WebRTCLinkHeader,
+    answer::WebRTCSessionAnswer, header::WebRTCLinkHeader,
     offer::WebRTCSessionOffer as WebRTCSessionOffer2, sdp::Session,
 };
 
@@ -68,7 +68,7 @@ pub fn webrtc_session_offer_apply(
     session_str: String,
     attributes: WebRTCSessionOffer,
 ) -> Result<String, MoonlightError> {
-    let mut session = Session::parse(session_str.as_bytes()).map_err(WebRTCParseError::from)?;
+    let mut session = Session::parse(session_str.as_bytes())?;
 
     let attributes = WebRTCSessionOffer2::from(attributes);
     attributes.apply(&mut session);
@@ -98,7 +98,7 @@ pub fn webrtc_session_answer_apply(
     session_str: String,
     attributes: WebRTCSessionAnswer,
 ) -> Result<String, MoonlightError> {
-    let mut session = Session::parse(session_str.as_bytes()).map_err(WebRTCParseError::from)?;
+    let mut session = Session::parse(session_str.as_bytes())?;
 
     attributes.apply(&mut session);
 

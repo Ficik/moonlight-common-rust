@@ -11,13 +11,10 @@ use moonlight_common::{
     ServerType, ServerVersion,
     stream::{
         AesIv, AesKey, SunshineEncryption,
-        proto::{
-            Instant, audio::AudioStreamError, control::peer::PacketSendError, packet::SunshinePing,
-            video::VideoStreamError,
-        },
+        proto::{Instant, packet::SunshinePing},
         video::{VideoFormat, VideoFormats as VideoFormats2},
     },
-    webrtc::WebRTCParseError,
+    webrtc::sdp,
 };
 
 pub mod audio_stream;
@@ -33,17 +30,14 @@ pub mod log;
 
 setup_scaffolding!();
 
+// TODO: more in depth error bindings
 #[derive(Debug, thiserror::Error, Error)]
 #[uniffi(flat_error)]
 pub enum MoonlightError {
-    #[error("video stream: {0}")]
-    VideoStream(#[from] VideoStreamError),
-    #[error("audio stream: {0}")]
-    AudioStream(#[from] AudioStreamError),
-    #[error("control stream: {0}")]
-    ControlStream(#[from] PacketSendError),
-    #[error("webrtc session parse: {0}")]
-    WebRTCSession(#[from] WebRTCParseError),
+    #[error("moonlight: {0}")]
+    Moonlight(#[from] moonlight_common::error::Error),
+    #[error("sdp parse: {0}")]
+    SdpParser(#[from] sdp::ParserError),
     #[error("set logger: {0}")]
     Logger(#[from] TryInitError),
 }
