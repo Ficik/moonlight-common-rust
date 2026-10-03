@@ -14,12 +14,7 @@ pub trait UdpStream: Send + Sync {
 
     fn poll_event(&mut self) -> Option<Self::Event>;
 
-    fn handle_receive(
-        &mut self,
-        now: Instant,
-        addr: SocketAddr,
-        data: &[u8],
-    ) -> Result<(), Error>;
+    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error>;
 
     fn handle_timeout(&mut self, now: Instant) -> Result<(), Error>;
 

@@ -274,12 +274,7 @@ pub trait PairingCryptoBackend {
     fn generate_client_identity(&self) -> Result<(ClientIdentifier, ClientSecret), Error>;
 
     /// Hashes data into the output buffer provided.
-    fn hash(
-        &self,
-        algorithm: HashAlgorithm,
-        data: &[u8],
-        output: &mut [u8],
-    ) -> Result<(), Error>;
+    fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) -> Result<(), Error>;
 
     /// Puts random bytes into data.
     fn random_bytes(&self, data: &mut [u8]) -> Result<(), Error>;
@@ -290,14 +285,8 @@ pub trait PairingCryptoBackend {
     /// Decrypts plaintext using aes 128 bit ecb with the provided key.
     fn decrypt_aes(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error>;
 
-    fn client_signature(
-        &self,
-        client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Error>;
-    fn server_signature(
-        &self,
-        server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Error>;
+    fn client_signature(&self, client_certificate: &ClientIdentifier) -> Result<Vec<u8>, Error>;
+    fn server_signature(&self, server_certificate: &ServerIdentifier) -> Result<Vec<u8>, Error>;
 
     /// Verifies the signature using sha256
     fn verify_signature(
@@ -308,8 +297,7 @@ pub trait PairingCryptoBackend {
     ) -> Result<bool, Error>;
 
     /// Signs the data using sha256
-    fn sign_data(&self, private_key: &ClientSecret, data: &[u8])
-    -> Result<Vec<u8>, Error>;
+    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Error>;
 }
 
 impl<T> PairingCryptoBackend for Arc<T>
@@ -328,12 +316,7 @@ where
         T::encrypt_aes(self, key, plaintext)
     }
 
-    fn hash(
-        &self,
-        algorithm: HashAlgorithm,
-        data: &[u8],
-        output: &mut [u8],
-    ) -> Result<(), Error> {
+    fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) -> Result<(), Error> {
         T::hash(self, algorithm, data, output)
     }
 
@@ -341,24 +324,14 @@ where
         T::random_bytes(self, data)
     }
 
-    fn sign_data(
-        &self,
-        private_key: &ClientSecret,
-        data: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Error> {
         T::sign_data(self, private_key, data)
     }
 
-    fn client_signature(
-        &self,
-        client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn client_signature(&self, client_certificate: &ClientIdentifier) -> Result<Vec<u8>, Error> {
         T::client_signature(self, client_certificate)
     }
-    fn server_signature(
-        &self,
-        server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn server_signature(&self, server_certificate: &ServerIdentifier) -> Result<Vec<u8>, Error> {
         T::server_signature(self, server_certificate)
     }
 

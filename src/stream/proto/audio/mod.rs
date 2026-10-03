@@ -173,12 +173,7 @@ impl UdpStream for AudioStream {
         self.events.pop_front()
     }
 
-    fn handle_receive(
-        &mut self,
-        now: Instant,
-        addr: SocketAddr,
-        data: &[u8],
-    ) -> Result<(), Error> {
+    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
         if self.addr != addr {
             trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
             return Ok(());

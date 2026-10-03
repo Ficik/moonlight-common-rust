@@ -274,9 +274,9 @@ impl MoonlightStream {
     fn send_event_error(error: i32) -> Option<Error> {
         match error {
             0 => None,
-            LI_ERR_UNSUPPORTED => Some(Error::PacketSend(
-                PacketSendError::PacketNotSupported(ControlPacketNotSupported),
-            )),
+            LI_ERR_UNSUPPORTED => Some(Error::PacketSend(PacketSendError::PacketNotSupported(
+                ControlPacketNotSupported,
+            ))),
             _ => Some(Error::EventSendError(error)),
         }
     }
@@ -544,10 +544,7 @@ impl MoonlightStream {
     /// These functions send horizontal scroll events to the host which are
     /// analogous to LiSendScrollEvent() and LiSendHighResScrollEvent().
     /// This is a Sunshine protocol extension.
-    pub fn send_high_res_horizontal_scroll(
-        &self,
-        scroll_amount: i16,
-    ) -> Result<(), Error> {
+    pub fn send_high_res_horizontal_scroll(&self, scroll_amount: i16) -> Result<(), Error> {
         unsafe {
             if let Some(err) =
                 Self::send_event_error(LiSendHighResHScrollEvent(scroll_amount as c_short))

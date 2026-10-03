@@ -15,7 +15,7 @@ use std::{
 use tracing::{Level, debug, info, info_span, instrument, trace, warn};
 
 use crate::{
-    error::{ErrorList, Error},
+    error::{Error, ErrorList},
     stream::{
         HostFeatures, MoonlightStreamConfig, MoonlightStreamSettings,
         audio::{AudioConfig, AudioDecoder, AudioFrame},
@@ -519,10 +519,7 @@ impl Inner {
     }
 }
 
-fn join_run_thread(
-    errors: &mut Vec<Error>,
-    error: Result<Result<(), Error>, Box<dyn Any + Send>>,
-) {
+fn join_run_thread(errors: &mut Vec<Error>, error: Result<Result<(), Error>, Box<dyn Any + Send>>) {
     match error {
         Ok(Ok(_)) => {}
         Ok(Err(error)) => errors.push(error),

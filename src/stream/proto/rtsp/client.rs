@@ -206,9 +206,8 @@ impl RtspClient {
                     debug!(plaintext = ?text,"received raw rtsp response");
 
                     // This response doesn't contain the body yet
-                    let (header_len, mut response) =
-                        RtspResponse::try_parse_header(text)?
-                            .ok_or::<Error>(RtspClientError::IncompleteResponse.into())?;
+                    let (header_len, mut response) = RtspResponse::try_parse_header(text)?
+                        .ok_or::<Error>(RtspClientError::IncompleteResponse.into())?;
 
                     // check if sequence number matches
                     if let Some((_, response_sequence_number)) = response

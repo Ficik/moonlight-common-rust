@@ -91,12 +91,7 @@ fn secure_rng() -> Result<OsRng, RustCryptoError> {
 impl PairingCryptoBackend for RustCryptoBackend {
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, output), ret, err))]
-    fn hash(
-        &self,
-        algorithm: HashAlgorithm,
-        data: &[u8],
-        output: &mut [u8],
-    ) -> Result<(), Error> {
+    fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) -> Result<(), Error> {
         match algorithm {
             HashAlgorithm::Sha1 => {
                 let digest = Sha1::digest(data);
@@ -207,10 +202,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn client_signature(
-        &self,
-        client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn client_signature(&self, client_certificate: &ClientIdentifier) -> Result<Vec<u8>, Error> {
         let client_certificate =
             Certificate::from_der(client_certificate.to_pem().contents()).map_err(err)?;
 
@@ -223,10 +215,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn server_signature(
-        &self,
-        server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn server_signature(&self, server_certificate: &ServerIdentifier) -> Result<Vec<u8>, Error> {
         let server_certificate =
             Certificate::from_der(server_certificate.to_pem().contents()).map_err(err)?;
 
@@ -265,11 +254,7 @@ impl PairingCryptoBackend for RustCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn sign_data(
-        &self,
-        private_key: &ClientSecret,
-        data: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Error> {
         let private_key =
             RsaPrivateKey::from_pkcs8_der(private_key.to_pem().contents()).map_err(err)?;
 
@@ -292,8 +277,7 @@ mod proto {
     use cbc::{Decryptor, Encryptor};
 
     use crate::{
-        crypto::rustcrypto::RustCryptoBackend, error::Error,
-        stream::proto::crypto::CryptoBackend,
+        crypto::rustcrypto::RustCryptoBackend, error::Error, stream::proto::crypto::CryptoBackend,
     };
 
     impl CryptoBackend for RustCryptoBackend {

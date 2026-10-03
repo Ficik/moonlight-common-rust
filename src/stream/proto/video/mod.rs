@@ -295,12 +295,7 @@ impl UdpStream for VideoStream {
         Ok(())
     }
 
-    fn handle_receive(
-        &mut self,
-        now: Instant,
-        addr: SocketAddr,
-        data: &[u8],
-    ) -> Result<(), Error> {
+    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);

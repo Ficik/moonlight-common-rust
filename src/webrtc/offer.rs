@@ -64,18 +64,14 @@ impl WebRTCSessionOffer {
                     width = Some(
                         parts
                             .next()
-                            .ok_or(Error::InvalidVideoMode(
-                                "missing width".to_string(),
-                            ))?
+                            .ok_or(Error::InvalidVideoMode("missing width".to_string()))?
                             .parse::<u32>()
                             .map_err(|_| Error::InvalidVideoMode(value.to_string()))?,
                     );
 
                     height = parts
                         .next()
-                        .ok_or(Error::InvalidVideoMode(
-                            "missing height".to_string(),
-                        ))?
+                        .ok_or(Error::InvalidVideoMode("missing height".to_string()))?
                         .parse::<u32>()
                         .map_err(|err| Error::InvalidVideoMode(err.to_string()))?;
 

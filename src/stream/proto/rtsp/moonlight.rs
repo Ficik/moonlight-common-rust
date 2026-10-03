@@ -42,9 +42,7 @@ impl RtspOptionsRequest {
 pub struct RtspOptionsResponse {}
 
 impl RtspOptionsResponse {
-    pub fn try_from_response(
-        response: &RtspResponse,
-    ) -> Result<RtspOptionsResponse, Error> {
+    pub fn try_from_response(response: &RtspResponse) -> Result<RtspOptionsResponse, Error> {
         let _ = response;
 
         if response.message.status_code / 100 != 2 {

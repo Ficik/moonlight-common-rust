@@ -42,12 +42,7 @@ pub struct OpenSSLCryptoBackend;
 impl PairingCryptoBackend for OpenSSLCryptoBackend {
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self, output), ret, err))]
-    fn hash(
-        &self,
-        algorithm: HashAlgorithm,
-        data: &[u8],
-        output: &mut [u8],
-    ) -> Result<(), Error> {
+    fn hash(&self, algorithm: HashAlgorithm, data: &[u8], output: &mut [u8]) -> Result<(), Error> {
         match algorithm {
             HashAlgorithm::Sha1 => {
                 let digest = sha1(data);
@@ -144,10 +139,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn client_signature(
-        &self,
-        client_certificate: &ClientIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn client_signature(&self, client_certificate: &ClientIdentifier) -> Result<Vec<u8>, Error> {
         let client_certificate = X509::from_der(client_certificate.to_pem().contents())?;
 
         Ok(client_certificate.signature().as_slice().to_vec())
@@ -155,10 +147,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn server_signature(
-        &self,
-        server_certificate: &ServerIdentifier,
-    ) -> Result<Vec<u8>, Error> {
+    fn server_signature(&self, server_certificate: &ServerIdentifier) -> Result<Vec<u8>, Error> {
         let server_certificate = X509::from_der(server_certificate.to_pem().contents())?;
 
         Ok(server_certificate.signature().as_slice().to_vec())
@@ -187,11 +176,7 @@ impl PairingCryptoBackend for OpenSSLCryptoBackend {
 
     #[cfg_attr(not(feature = "__tracing_sensitive"), instrument(level = Level::TRACE, skip_all, err))]
     #[cfg_attr(feature = "__tracing_sensitive", instrument(level = Level::TRACE, skip(self), ret, err))]
-    fn sign_data(
-        &self,
-        private_key: &ClientSecret,
-        data: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    fn sign_data(&self, private_key: &ClientSecret, data: &[u8]) -> Result<Vec<u8>, Error> {
         let private_key = PKey::<Private>::private_key_from_der(private_key.to_pem().contents())?;
 
         let mut md_ctx = MdCtx::new()?;
@@ -211,8 +196,7 @@ mod proto {
     use openssl::symm::{self, Crypter, Mode};
 
     use crate::{
-        crypto::openssl::OpenSSLCryptoBackend, error::Error,
-        stream::proto::crypto::CryptoBackend,
+        crypto::openssl::OpenSSLCryptoBackend, error::Error, stream::proto::crypto::CryptoBackend,
     };
 
     impl CryptoBackend for OpenSSLCryptoBackend {

@@ -208,35 +208,29 @@ impl Request for ClientStreamRequest {
         let mode_width: u32 = parse_u32(
             ERROR_CONTEXT,
             "mode.width",
-            mode_split
-                .next()
-                .ok_or_else(|| Error::InvalidValue {
-                    context: ERROR_CONTEXT,
-                    expected: "WIDTHxHEIGHTxFPS",
-                    got: mode.to_string(),
-                })?,
+            mode_split.next().ok_or_else(|| Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "WIDTHxHEIGHTxFPS",
+                got: mode.to_string(),
+            })?,
         )?;
         let mode_height: u32 = parse_u32(
             ERROR_CONTEXT,
             "mode.height",
-            mode_split
-                .next()
-                .ok_or_else(|| Error::InvalidValue {
-                    context: ERROR_CONTEXT,
-                    expected: "WIDTHxHEIGHTxFPS",
-                    got: mode.to_string(),
-                })?,
+            mode_split.next().ok_or_else(|| Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "WIDTHxHEIGHTxFPS",
+                got: mode.to_string(),
+            })?,
         )?;
         let mode_fps: u32 = parse_u32(
             ERROR_CONTEXT,
             "mode.fps",
-            mode_split
-                .next()
-                .ok_or_else(|| Error::InvalidValue {
-                    context: ERROR_CONTEXT,
-                    expected: "WIDTHxHEIGHTxFPS",
-                    got: mode.to_string(),
-                })?,
+            mode_split.next().ok_or_else(|| Error::InvalidValue {
+                context: ERROR_CONTEXT,
+                expected: "WIDTHxHEIGHTxFPS",
+                got: mode.to_string(),
+            })?,
         )?;
 
         let sops = parse_number_as_bool(

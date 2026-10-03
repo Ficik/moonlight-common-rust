@@ -171,9 +171,7 @@ impl RequestClient for TokioHyperClient {
             SectionKind::PrivateKey,
             client_private_key.contents().to_vec(),
         )
-        .ok_or(Error::Other(
-            "invalid private key".to_string().into(),
-        ))?
+        .ok_or(Error::Other("invalid private key".to_string().into()))?
         .clone_key();
 
         let certificate = CertificateDer::from_slice(client_certificate.contents()).into_owned();
