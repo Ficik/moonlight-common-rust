@@ -11,9 +11,7 @@ use pem::Pem;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    ServerState, ServerVersion, mac::MacAddress, stream::proto::control::peer::PacketSendError,
-};
+use crate::{ServerState, ServerVersion, mac::MacAddress, stream::control::PacketSendError};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]

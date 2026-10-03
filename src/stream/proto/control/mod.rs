@@ -16,19 +16,18 @@ use crate::{
     http::server_info::ApolloPermissions,
     stream::{
         AesKey,
-        control::EstimatedRttInfo,
+        control::{ControlPacketNotSupported, EstimatedRttInfo, PacketSendError},
         proto::{
             DynCryptoBackend,
             control::{
                 input_batcher::{ClientInputEvent, InputBatcher},
                 packet::{
-                    ControlPacket, ControlPacketConfig, ControlPacketNotSupported, EnetChannel,
-                    PERIODIC_PING_INTERVAL, PERIODIC_PING_VERSION,
+                    ControlPacket, ControlPacketConfig, EnetChannel, PERIODIC_PING_INTERVAL,
+                    PERIODIC_PING_VERSION,
                 },
                 peer::{
                     ControlConnectConfig, ControlEncryptionMethod, ControlHost, ControlHostConfig,
                     ControlHostEvent, ControlPeerConfig, ControlPeerId, ControlPeerRole,
-                    PacketSendError,
                 },
             },
             runtime::UdpStream,
@@ -156,13 +155,9 @@ impl ControlStream {
     }
 
     pub fn estimated_rtt(&self) -> Result<EstimatedRttInfo, Error> {
-        Ok(self
-            .host
+        self.host
             .peer_estimated_rtt(self.peer)
-            .unwrap_or(EstimatedRttInfo {
-                rtt: Duration::ZERO,
-                rtt_variance: Duration::ZERO,
-            }))
+            .ok_or(PacketSendError::PeerNotConnected.into())
     }
 
     /// This will intelligently batch or instantly send the input based on if it makes sense to do so.

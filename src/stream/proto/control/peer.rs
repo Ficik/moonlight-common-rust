@@ -6,14 +6,13 @@ use std::{
 
 use rusty_enet::{Packet, PeerID, PeerState};
 use sans_io_time::Instant;
-use thiserror::Error;
 use tracing::{Level, debug, instrument, trace, warn};
 
 use crate::{
     error::Error,
     stream::{
         AesKey,
-        control::EstimatedRttInfo,
+        control::{ControlPacketNotSupported, EstimatedRttInfo, PacketSendError},
         proto::{
             DynCryptoBackend,
             control::{
@@ -24,8 +23,8 @@ use crate::{
                     encrypt_serverbound_control_packet_into,
                 },
                 packet::{
-                    ControlPacket, ControlPacketConfig, ControlPacketNotSupported,
-                    EncryptedControlHeader, EnetChannel, PacketDirection,
+                    ControlPacket, ControlPacketConfig, EncryptedControlHeader, EnetChannel,
+                    PacketDirection,
                 },
             },
             enet::{EnetConfig, EnetEvent, EnetHost},
@@ -81,24 +80,6 @@ impl From<PacketKind> for rusty_enet::PacketKind {
             PacketKind::Reliable => Self::Reliable,
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum PacketSendError {
-    #[error("the peer hasn't been found")]
-    PeerNotFound,
-    #[error("the peer hasn't successfully connected yet")]
-    PeerNotConnected,
-    #[error("the peer was not configured, but this is required to do this action")]
-    PeerNotConfigured,
-    #[error("packet not supported")]
-    PacketNotSupported(#[from] ControlPacketNotSupported),
-    /// Apollo Extension
-    ///
-    /// See also:
-    /// - [ApolloPermissions](crate::stream::ApolloPermissions)
-    #[error("the apollo permissions list doesn't allow this action")]
-    ApolloPermissionDenied,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -210,7 +191,7 @@ impl ControlHost {
         now: Instant,
         config: ControlHostConfig,
         crypto_backend: DynCryptoBackend,
-    ) -> Result<Self, PacketSendError> {
+    ) -> Result<Self, Error> {
         Ok(Self {
             crypto_backend,
             peer_data: Default::default(),
@@ -258,9 +239,9 @@ impl ControlHost {
         &mut self,
         id: ControlPeerId,
         config: ControlPeerConfig,
-    ) -> Result<(), PacketSendError> {
+    ) -> Result<(), Error> {
         if self.host.peer(id.0).is_none() {
-            return Err(PacketSendError::PeerNotFound);
+            return Err(PacketSendError::PeerNotFound.into());
         }
 
         self.peer_data.insert(

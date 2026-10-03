@@ -30,11 +30,11 @@ use crate::{
         c::connection::ConnectionListenerC,
         connection::ConnectionListener,
         control::{
-            ActiveGamepads, BatteryState, ControllerButtons, ControllerCapabilities,
-            ControllerType, EstimatedRttInfo, KeyAction, KeyCode, KeyFlags, KeyModifiers,
-            MotionType, MouseButton, MouseButtonAction, TouchEventType,
+            ActiveGamepads, BatteryState, ControlPacketNotSupported, ControllerButtons,
+            ControllerCapabilities, ControllerType, EstimatedRttInfo, KeyAction, KeyCode, KeyFlags,
+            KeyModifiers, MotionType, MouseButton, MouseButtonAction, PacketSendError,
+            TouchEventType,
         },
-        proto::control::{packet::ControlPacketNotSupported, peer::PacketSendError},
         video::VideoDecoder,
     },
 };

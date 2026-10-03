@@ -1,19 +1,18 @@
 use std::{ops::Deref, time::Duration};
 
 use num::FromPrimitive;
-use thiserror::Error;
 use tracing::{Level, instrument, trace, warn};
 
 use crate::{
     ServerVersion,
-    error::Error,
     stream::{
         control::{
-            ActiveGamepads, BatteryState, CompactKeyStates, ControllerButtons,
-            ControllerCapabilities, ControllerType, KeyAction, KeyCode, KeyFlags, KeyModifiers,
-            MotionType, MouseButton, MouseButtonAction, PenButtons, ToolType, TouchEventType,
+            ActiveGamepads, BatteryState, CompactKeyStates, ControlPacketNotSupported,
+            ControllerButtons, ControllerCapabilities, ControllerType, KeyAction, KeyCode,
+            KeyFlags, KeyModifiers, MotionType, MouseButton, MouseButtonAction, PenButtons,
+            ToolType, TouchEventType,
         },
-        proto::control::peer::{PacketKind, PacketSendError},
+        proto::control::peer::PacketKind,
         video::{Primary, SunshineHdrMetadata},
     },
 };
@@ -28,16 +27,6 @@ pub const PERIODIC_PING_INTERVAL: Duration = Duration::from_millis(100);
 /// References:
 /// - Moonlight Version Check: <https://github.com/moonlight-stream/moonlight-common-c/blob/2a5a1f3e8a57cbbb316ed7dfff3a3965c2e77d25/src/ControlStream.c#L354>
 pub const PERIODIC_PING_VERSION: ServerVersion = ServerVersion::new(7, 1, 415, 0);
-
-#[derive(Debug, Error, PartialEq)]
-#[error("this packet is not supported on this version of moonlight")]
-pub struct ControlPacketNotSupported;
-
-impl From<ControlPacketNotSupported> for Error {
-    fn from(value: ControlPacketNotSupported) -> Self {
-        Self::PacketSend(PacketSendError::PacketNotSupported(value))
-    }
-}
 
 /// Control Header:
 /// - Definition: <https://github.com/moonlight-stream/moonlight-common-c/blob/435bc6a5a4852c90cfb037de1378c0334ed36d8e/src/ControlStream.c#L20-L23>

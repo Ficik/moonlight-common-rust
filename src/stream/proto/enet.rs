@@ -13,7 +13,7 @@ use rusty_enet::{
 use sans_io_time::Instant;
 use tracing::{debug, trace};
 
-use crate::{error::Error, stream::proto::control::peer::PacketSendError};
+use crate::{error::Error, stream::control::PacketSendError};
 
 // TODO: dynamically set timeout, see https://github.com/jabuwu/rusty_enet/issues/4
 // TODO: this seems interesting: https://github.com/zpl-c/enet/blob/8647b6eaea881c86471ae29f732620d299fc20d7/include/enet.h#L296-L488
