@@ -19,7 +19,7 @@ use moonlight_common::{
                     PacketKind,
                 },
             },
-            runtime::UdpStream,
+            runtime::{Receive, UdpStream},
         },
     },
 };
@@ -161,10 +161,11 @@ impl ControlHost {
     #[uniffi::constructor]
     pub fn new(now: Instant, config: ControlHostConfig) -> Result<Arc<Self>, MoonlightError> {
         let this = Arc::new(Self {
-            inner: Mutex::new(
-                ControlHost2::new(now, config.into(), Arc::new(RustCryptoBackend))
-                    .map_err(moonlight_common::error::Error::from)?,
-            ),
+            inner: Mutex::new(ControlHost2::new(
+                now,
+                config.into(),
+                Arc::new(RustCryptoBackend),
+            )?),
         });
 
         Ok(this)
@@ -176,9 +177,7 @@ impl ControlHost {
         config: ControlPeerConfig,
     ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
-        inner
-            .configure_peer(id, config.into())
-            .map_err(moonlight_common::error::Error::from)?;
+        inner.configure_peer(id, config.into())?;
         Ok(())
     }
 
@@ -258,13 +257,7 @@ impl ControlHost {
     pub fn poll_packet(&self) -> Option<UdpTransmit> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
 
-        let result = inner.pending_send().map(|(addr, contents)| UdpTransmit {
-            addr,
-            contents: contents.to_vec(),
-        });
-        inner.consume_send();
-
-        result
+        inner.poll_transmit().map(UdpTransmit::from)
     }
 
     pub fn handle_receive(
@@ -274,7 +267,13 @@ impl ControlHost {
         contents: Vec<u8>,
     ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock ControlHost");
-        inner.handle_receive(now, addr, &contents)?;
+        inner.handle_receive(
+            now,
+            Receive {
+                source: addr,
+                data: &contents,
+            },
+        )?;
         Ok(())
     }
 

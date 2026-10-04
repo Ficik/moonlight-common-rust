@@ -18,7 +18,7 @@ use moonlight_common::{
                 AudioStreamEvent as AudioStreamEvent2,
             },
             packet::SunshinePing,
-            runtime::UdpStream,
+            runtime::{Receive, UdpStream},
         },
     },
 };
@@ -129,13 +129,7 @@ impl AudioStream {
     pub fn poll_packet(&self) -> Option<UdpTransmit> {
         let mut inner = self.inner.lock().expect("lock AudioStream");
 
-        let result = inner.pending_send().map(|(addr, contents)| UdpTransmit {
-            addr,
-            contents: contents.to_vec(),
-        });
-        inner.consume_send();
-
-        result
+        inner.poll_transmit().map(UdpTransmit::from)
     }
 
     pub fn handle_receive(
@@ -145,7 +139,13 @@ impl AudioStream {
         contents: Vec<u8>,
     ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock AudioStream");
-        inner.handle_receive(now, addr, &contents)?;
+        inner.handle_receive(
+            now,
+            Receive {
+                source: addr,
+                data: &contents,
+            },
+        )?;
         Ok(())
     }
 

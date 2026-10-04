@@ -12,7 +12,7 @@ use moonlight_common::{
         proto::{
             Instant,
             packet::SunshinePing,
-            runtime::UdpStream,
+            runtime::{Receive, UdpStream},
             video::{
                 VideoStream as VideoStream2, VideoStreamConfig as VideoStreamConfig2,
                 VideoStreamEvent as VideoStreamEvent2, depayloader::VideoDepayloaderConfig,
@@ -166,13 +166,7 @@ impl VideoStream {
     pub fn poll_packet(&self) -> Option<UdpTransmit> {
         let mut inner = self.inner.lock().expect("lock VideoStream");
 
-        let result = inner.pending_send().map(|(addr, contents)| UdpTransmit {
-            addr,
-            contents: contents.to_vec(),
-        });
-        inner.consume_send();
-
-        result
+        inner.poll_transmit().map(UdpTransmit::from)
     }
 
     pub fn handle_receive(
@@ -182,7 +176,13 @@ impl VideoStream {
         contents: Vec<u8>,
     ) -> Result<(), MoonlightError> {
         let mut inner = self.inner.lock().expect("lock VideoStream");
-        inner.handle_receive(now, addr, &contents)?;
+        inner.handle_receive(
+            now,
+            Receive {
+                source: addr,
+                data: &contents,
+            },
+        )?;
         Ok(())
     }
 

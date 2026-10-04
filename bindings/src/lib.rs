@@ -11,7 +11,7 @@ use moonlight_common::{
     ServerType, ServerVersion,
     stream::{
         AesIv, AesKey, SunshineEncryption,
-        proto::{Instant, packet::SunshinePing},
+        proto::{Instant, packet::SunshinePing, runtime::Transmit},
         video::{VideoFormat, VideoFormats as VideoFormats2},
     },
     webrtc::sdp,
@@ -229,4 +229,13 @@ impl From<VideoFormats2> for VideoFormats {
 pub struct UdpTransmit {
     pub addr: SocketAddr,
     pub contents: Vec<u8>,
+}
+
+impl From<Transmit> for UdpTransmit {
+    fn from(value: Transmit) -> Self {
+        Self {
+            addr: value.destination,
+            contents: value.data.into(),
+        }
+    }
 }
