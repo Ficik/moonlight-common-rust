@@ -28,7 +28,7 @@ use crate::{
                 },
             },
             enet::{EnetConfig, EnetEvent, EnetHost},
-            runtime::UdpStream,
+            runtime::{Receive, Transmit, UdpStream},
         },
     },
 };
@@ -511,11 +511,8 @@ impl ControlHost {
 impl UdpStream for ControlHost {
     type Event = ControlHostEvent;
 
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        self.host.pending_send()
-    }
-    fn consume_send(&mut self) {
-        self.host.consume_send();
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.host.poll_transmit()
     }
 
     fn poll_timeout(&self) -> Option<Instant> {
@@ -526,8 +523,8 @@ impl UdpStream for ControlHost {
         self.events.pop_front()
     }
 
-    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
-        self.host.handle_receive(now, addr, data);
+    fn handle_receive(&mut self, now: Instant, receive: Receive) -> Result<(), Error> {
+        self.host.handle_receive(now, receive.source, receive.data);
 
         self.handle_events()?;
         Ok(())

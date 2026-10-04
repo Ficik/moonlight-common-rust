@@ -27,7 +27,7 @@ use crate::{
             },
             packet::SunshinePing,
             ping::{PingSender, PingSenderConfig},
-            runtime::UdpStream,
+            runtime::{Receive, Transmit, UdpStream},
         },
     },
 };
@@ -154,11 +154,11 @@ pub(crate) fn create_audio_reed_solomon() -> ReedSolomon {
 impl UdpStream for AudioStream {
     type Event = AudioStreamEvent;
 
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        self.ping_sender.pending_send().map(|x| (self.addr, x))
-    }
-    fn consume_send(&mut self) {
-        self.ping_sender.consume_send();
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.ping_sender.poll_transmit().map(|data| Transmit {
+            destination: self.addr,
+            data,
+        })
     }
 
     fn poll_timeout(&self) -> Option<Instant> {
@@ -173,13 +173,13 @@ impl UdpStream for AudioStream {
         self.events.pop_front()
     }
 
-    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
-        if self.addr != addr {
-            trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
+    fn handle_receive(&mut self, now: Instant, receive: Receive) -> Result<(), Error> {
+        if self.addr != receive.source {
+            trace!(stream_addr = %self.addr, recv_addr = %receive.source, "received packet from non stream address");
             return Ok(());
         }
 
-        self.depayloader.handle_packet(data)?;
+        self.depayloader.handle_packet(receive.data)?;
 
         if self.first_packet.is_none() {
             info!(now = %now, "received first audio packet");

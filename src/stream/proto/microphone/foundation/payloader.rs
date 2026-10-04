@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, time::Duration};
 
+use bytes::{Bytes, BytesMut};
 use thiserror::Error;
 
 use crate::{
@@ -16,6 +17,10 @@ use crate::{
         },
     },
 };
+
+#[cfg(test)]
+#[path = "./payloader_tests.rs"]
+mod payloader_tests;
 
 #[derive(Debug, Error)]
 pub enum FoundationMicPayloaderError {
@@ -39,9 +44,7 @@ pub struct FoundationMicPayloaderConfig {
 pub struct FoundationMicPayloader {
     crypto_backend: DynCryptoBackend,
     config: FoundationMicPayloaderConfig,
-    current_packet: Option<Vec<u8>>,
-    packets: VecDeque<Vec<u8>>,
-    unused: Vec<Vec<u8>>,
+    packets: VecDeque<Bytes>,
     sequence_number: u16,
 }
 
@@ -50,9 +53,7 @@ impl FoundationMicPayloader {
         Self {
             crypto_backend,
             config,
-            current_packet: None,
             packets: Default::default(),
-            unused: Default::default(),
             sequence_number: 0,
         }
     }
@@ -64,7 +65,7 @@ impl FoundationMicPayloader {
             FoundationMicHeader::SIZE + frame.len()
         };
 
-        let mut packet = self.take_packet(safe_len);
+        let mut packet = BytesMut::zeroed(safe_len);
 
         let header = FoundationMicHeader {
             flags: FOUNDATION_MIC_HEADER_FLAGS,
@@ -113,35 +114,12 @@ impl FoundationMicPayloader {
 
         self.sequence_number = self.sequence_number.wrapping_add(1);
 
-        self.packets.push_back(packet);
+        self.packets.push_back(packet.freeze());
 
         Ok(())
     }
 
-    fn take_packet(&mut self, len: usize) -> Vec<u8> {
-        self.unused
-            .pop()
-            .map(|mut x| {
-                x.resize(len, 0);
-                x
-            })
-            .unwrap_or_else(|| vec![0; len])
-    }
-
-    pub fn poll_packet(&mut self) -> Option<&[u8]> {
-        if let Some(old_packet) = self.current_packet.take() {
-            self.unused.push(old_packet);
-        }
-
-        if let Some(packet) = self.packets.pop_front() {
-            self.current_packet = Some(packet);
-
-            // The value was just set to some, this cannot fail
-            #[allow(clippy::unwrap_used)]
-            let packet = self.current_packet.as_ref().unwrap();
-            Some(packet)
-        } else {
-            None
-        }
+    pub fn poll_packet(&mut self) -> Option<Bytes> {
+        self.packets.pop_front()
     }
 }

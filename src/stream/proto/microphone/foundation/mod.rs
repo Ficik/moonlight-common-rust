@@ -17,11 +17,10 @@ use crate::{
         SunshineEncryption,
         proto::{
             DynCryptoBackend,
-            microphone::foundation::{
-                packet::FOUNDATION_MAX_MIC_PACKET_SIZE,
-                payloader::{FoundationMicPayloader, FoundationMicPayloaderConfig},
+            microphone::foundation::payloader::{
+                FoundationMicPayloader, FoundationMicPayloaderConfig,
             },
-            runtime::UdpStream,
+            runtime::{Receive, Transmit, UdpStream},
         },
     },
 };
@@ -34,9 +33,6 @@ pub mod packet;
 pub mod payloader;
 pub mod rtsp;
 
-#[cfg(test)]
-mod test;
-
 #[derive(Debug)]
 pub struct FoundationMicStreamConfig {
     pub addr: SocketAddr,
@@ -48,7 +44,6 @@ pub struct FoundationMicStreamConfig {
 pub struct FoundationMicStream {
     addr: SocketAddr,
     payloader: FoundationMicPayloader,
-    current_packet: Vec<u8>,
 }
 
 impl FoundationMicStream {
@@ -66,7 +61,6 @@ impl FoundationMicStream {
                 },
                 crypto_backend,
             ),
-            current_packet: vec![0; FOUNDATION_MAX_MIC_PACKET_SIZE],
         }
     }
 
@@ -79,30 +73,20 @@ impl FoundationMicStream {
 
         Ok(())
     }
-
-    fn update(&mut self) {
-        if self.current_packet.is_empty()
-            && let Some(packet) = self.payloader.poll_packet()
-        {
-            self.current_packet.extend_from_slice(packet);
-        }
-    }
 }
 
 impl UdpStream for FoundationMicStream {
     type Event = Infallible;
 
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        if !self.current_packet.is_empty() {
-            Some((self.addr, &self.current_packet))
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        if let Some(data) = self.payloader.poll_packet() {
+            Some(Transmit {
+                destination: self.addr,
+                data,
+            })
         } else {
             None
         }
-    }
-
-    fn consume_send(&mut self) {
-        self.current_packet.clear();
-        self.update();
     }
 
     fn poll_timeout(&self) -> Option<Instant> {
@@ -113,12 +97,7 @@ impl UdpStream for FoundationMicStream {
         None
     }
 
-    fn handle_receive(
-        &mut self,
-        _now: Instant,
-        _addr: SocketAddr,
-        _data: &[u8],
-    ) -> Result<(), Error> {
+    fn handle_receive(&mut self, _now: Instant, _receive: Receive) -> Result<(), Error> {
         Ok(())
     }
 

@@ -17,7 +17,7 @@ use crate::{
             DynCryptoBackend,
             packet::SunshinePing,
             ping::{PingSender, PingSenderConfig},
-            runtime::UdpStream,
+            runtime::{Receive, Transmit, UdpStream},
             video::{
                 depayloader::{VideoDepayloader, VideoDepayloaderConfig},
                 frame::OwnedVideoFrame,
@@ -271,11 +271,13 @@ impl Drop for VideoStream {
 impl UdpStream for VideoStream {
     type Event = VideoStreamEvent;
 
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        self.ping_sender.pending_send().map(|x| (self.addr, x))
-    }
-    fn consume_send(&mut self) {
-        self.ping_sender.consume_send()
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        let data = self.ping_sender.poll_transmit()?;
+
+        Some(Transmit {
+            destination: self.addr,
+            data,
+        })
     }
 
     fn poll_timeout(&self) -> Option<Instant> {
@@ -295,15 +297,15 @@ impl UdpStream for VideoStream {
         Ok(())
     }
 
-    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
+    fn handle_receive(&mut self, now: Instant, receive: Receive) -> Result<(), Error> {
         self.last_now = now;
 
         self.ping_sender.handle_timeout(now);
 
-        if self.addr != addr {
+        if self.addr != receive.source {
             self.update(now)?;
 
-            trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
+            trace!(stream_addr = %self.addr, recv_addr = %receive.source, "received packet from non stream address");
             return Ok(());
         }
 
@@ -313,7 +315,7 @@ impl UdpStream for VideoStream {
             self.first_packet = Some(now);
         }
 
-        self.depayloader.handle_packet(data)?;
+        self.depayloader.handle_packet(receive.data)?;
 
         self.update(now)?;
 

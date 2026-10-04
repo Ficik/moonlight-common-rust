@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use sans_io_time::Instant;
-use tracing::{debug, debug_span, info};
+use tracing::{debug, info};
 
 use crate::{
     ServerVersion,
@@ -15,7 +15,7 @@ use crate::{
                 ControlPeerRole,
             },
         },
-        runtime::UdpStream,
+        runtime::{Receive, UdpStream},
     },
 };
 
@@ -27,28 +27,34 @@ where
     let (peer_a_addr, peer_a_stream) = peer_a;
     let (peer_b_addr, peer_b_stream) = peer_b;
 
-    while peer_a_stream.pending_send().is_some() || peer_b_stream.pending_send().is_some() {
-        debug_span!("peer", addr = %peer_b_addr).in_scope(|| {
-            while let Some((_, bytes)) = peer_a_stream.pending_send() {
-                let bytes = bytes.to_vec();
-                peer_a_stream.consume_send();
+    'outer: loop {
+        if let Some(transmit) = peer_a_stream.poll_transmit() {
+            peer_b_stream
+                .handle_receive(
+                    now,
+                    Receive {
+                        source: peer_a_addr,
+                        data: &transmit.data,
+                    },
+                )
+                .unwrap();
+            continue 'outer;
+        }
 
-                peer_b_stream
-                    .handle_receive(now, peer_a_addr, &bytes)
-                    .unwrap();
-            }
-        });
+        if let Some(transmit) = peer_b_stream.poll_transmit() {
+            peer_a_stream
+                .handle_receive(
+                    now,
+                    Receive {
+                        source: peer_b_addr,
+                        data: &transmit.data,
+                    },
+                )
+                .unwrap();
+            continue 'outer;
+        }
 
-        debug_span!("peer", addr = %peer_a_addr).in_scope(|| {
-            while let Some((_, bytes)) = peer_b_stream.pending_send() {
-                let bytes = bytes.to_vec();
-                peer_b_stream.consume_send();
-
-                peer_a_stream
-                    .handle_receive(now, peer_b_addr, &bytes)
-                    .unwrap();
-            }
-        });
+        break;
     }
 }
 

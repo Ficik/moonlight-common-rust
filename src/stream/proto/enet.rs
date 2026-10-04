@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use bytes::Bytes;
 use rusty_enet::{
     Address, Event, Host, HostSettings, MTU_MAX, PacketReceived, Peer, PeerID, ReadWrite, Socket,
     SocketOptions,
@@ -13,7 +14,10 @@ use rusty_enet::{
 use sans_io_time::Instant;
 use tracing::{debug, trace};
 
-use crate::{error::Error, stream::control::PacketSendError};
+use crate::{
+    error::Error,
+    stream::{control::PacketSendError, proto::runtime::Transmit},
+};
 
 // TODO: dynamically set timeout, see https://github.com/jabuwu/rusty_enet/issues/4
 // TODO: this seems interesting: https://github.com/zpl-c/enet/blob/8647b6eaea881c86471ae29f732620d299fc20d7/include/enet.h#L296-L488
@@ -156,15 +160,12 @@ impl EnetHost {
         self.enet.get_peer(id)
     }
 
-    pub fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit> {
         self.enet
-            .socket()
+            .socket_mut()
             .outbound
-            .front()
-            .map(|(addr, bytes)| (*addr, bytes.as_slice()))
-    }
-    pub fn consume_send(&mut self) {
-        self.enet.socket_mut().outbound.pop_front();
+            .pop_front()
+            .map(|(destination, data)| Transmit { destination, data })
     }
 
     pub fn poll_timeout(&self) -> Instant {
@@ -257,7 +258,7 @@ impl EnetHost {
 #[derive(Debug)]
 pub(crate) struct Io<A> {
     inbound: VecDeque<(A, Vec<u8>)>,
-    outbound: VecDeque<(A, Vec<u8>)>,
+    outbound: VecDeque<(A, Bytes)>,
 }
 
 impl<A> Default for Io<A> {
@@ -279,7 +280,8 @@ impl<A: Address + 'static> Socket for Io<A> {
     }
 
     fn send(&mut self, address: A, buffer: &[u8]) -> Result<usize, Infallible> {
-        self.outbound.push_back((address, buffer.to_vec()));
+        self.outbound
+            .push_back((address, Bytes::copy_from_slice(buffer)));
         Ok(buffer.len())
     }
 

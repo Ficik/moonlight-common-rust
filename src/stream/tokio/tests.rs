@@ -8,7 +8,10 @@ use tokio::{
 };
 
 use super::StreamDriver;
-use crate::{error::Error, stream::proto::runtime::UdpStream};
+use crate::{
+    error::Error,
+    stream::proto::runtime::{Receive, Transmit, UdpStream},
+};
 
 #[derive(Debug, PartialEq)]
 enum TestEvent {
@@ -23,40 +26,30 @@ enum TestEvent {
 }
 #[derive(Default)]
 struct TestStream {
-    send_list: VecDeque<(SocketAddr, Vec<u8>)>,
-    event_list: VecDeque<TestEvent>,
+    transmits: VecDeque<Transmit>,
+    events: VecDeque<TestEvent>,
     timeout: Option<SansInstant>,
     errors: Vec<Error>,
 }
 impl UdpStream for TestStream {
     type Event = TestEvent;
 
-    fn consume_send(&mut self) {
-        self.send_list.pop_front();
-    }
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        self.send_list
-            .front()
-            .map(|(addr, data)| (*addr, data.as_slice()))
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.transmits.pop_front()
     }
 
     fn poll_event(&mut self) -> Option<Self::Event> {
-        self.event_list.pop_front()
+        self.events.pop_front()
     }
     fn poll_timeout(&self) -> Option<SansInstant> {
         self.timeout
     }
 
-    fn handle_receive(
-        &mut self,
-        now: SansInstant,
-        addr: SocketAddr,
-        data: &[u8],
-    ) -> Result<(), Error> {
-        self.event_list.push_back(TestEvent::Receive {
+    fn handle_receive(&mut self, now: SansInstant, receive: Receive) -> Result<(), Error> {
+        self.events.push_back(TestEvent::Receive {
             now,
-            addr,
-            data: data.to_vec(),
+            addr: receive.source,
+            data: receive.data.to_vec(),
         });
 
         if let Some(error) = self.errors.pop() {
@@ -65,7 +58,7 @@ impl UdpStream for TestStream {
         Ok(())
     }
     fn handle_timeout(&mut self, now: SansInstant) -> Result<(), Error> {
-        self.event_list.push_back(TestEvent::Timeout(now));
+        self.events.push_back(TestEvent::Timeout(now));
 
         if let Some(error) = self.errors.pop() {
             return Err(error);
@@ -234,10 +227,7 @@ async fn deliver_events_before_error() {
     sender.send_to(&[2], address).await.unwrap();
 
     // Add event and error
-    driver
-        .stream_mut()
-        .event_list
-        .push_front(TestEvent::Other(0));
+    driver.stream_mut().events.push_front(TestEvent::Other(0));
     driver.stream_mut().errors.push(Error::ConnectionFailed);
 
     assert_eq!(

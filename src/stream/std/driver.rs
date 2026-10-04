@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant as StdInstant};
@@ -8,7 +8,7 @@ use sans_io_time::Instant;
 use tracing::{Level, Span, debug, instrument, trace};
 
 use crate::error::Error;
-use crate::stream::proto::runtime::UdpStream;
+use crate::stream::proto::runtime::{Receive, UdpStream};
 use crate::stream::sockets::new_udp_socket;
 use crate::stream::std::{finalize_errors, join_run_thread};
 
@@ -96,9 +96,6 @@ where
 
         // This handles sending packets
 
-        let mut addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), 0);
-        let mut len = 0;
-        let mut buffer = vec![0; UDP_BUFFER_CAPACITY];
         let mut stream = self.stream.lock().expect("lock stream failed");
 
         self.socket
@@ -108,35 +105,27 @@ where
                 break;
             }
 
-            if len != 0 {
-                // We were blocked to see if this thread should stop
-            } else if let Some((pending_addr, pending_send)) = stream.pending_send() {
+            let transmit = if let Some(transmit) = stream.poll_transmit() {
                 #[cfg(debug_assertions)]
-                trace!(pending_send = ?pending_send, "got pending sending buffer");
+                trace!(transmit = ?transmit, "got pending sending buffer");
 
-                addr = pending_addr;
-                len = pending_send.len();
-                buffer[0..len].copy_from_slice(pending_send);
-
-                stream.consume_send();
+                transmit
             } else {
                 // Wait for pending packet
                 #[cfg(debug_assertions)]
                 trace!("waiting for change of stream");
                 stream = self.stream_condvar.wait(stream).expect("wait on stream");
                 continue;
-            }
+            };
             drop(stream);
 
             #[cfg(debug_assertions)]
             trace!("sending packet");
             // Send packet
-            match self.socket.send_to(&buffer[0..len], addr) {
+            match self.socket.send_to(&transmit.data, transmit.destination) {
                 Ok(_) => {
                     #[cfg(debug_assertions)]
-                    trace!(packet = &buffer[0..len], "successfully sent packet");
-                    // Submit packet using len = 0
-                    len = 0;
+                    trace!(transmit = ?transmit, "successfully sent packet");
                 }
                 Err(err)
                     if matches!(
@@ -194,7 +183,13 @@ where
             trace!(packet = ?buffer[0..len], "received packet");
 
             let mut stream = self.stream.lock().expect("lock stream failed");
-            stream.handle_receive(Instant::from_std(self.base_time), addr, &buffer[0..len])?;
+            stream.handle_receive(
+                Instant::from_std(self.base_time),
+                Receive {
+                    source: addr,
+                    data: &buffer[0..len],
+                },
+            )?;
 
             self.stream_condvar.notify_all();
         }

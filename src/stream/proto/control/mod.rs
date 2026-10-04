@@ -30,7 +30,7 @@ use crate::{
                     ControlHostEvent, ControlPeerConfig, ControlPeerId, ControlPeerRole,
                 },
             },
-            runtime::UdpStream,
+            runtime::{Receive, Transmit, UdpStream},
             soonest,
         },
     },
@@ -428,12 +428,8 @@ impl Debug for ControlStream {
 impl UdpStream for ControlStream {
     type Event = ControlStreamEvent;
 
-    fn pending_send(&self) -> Option<(SocketAddr, &[u8])> {
-        self.host.pending_send()
-    }
-
-    fn consume_send(&mut self) {
-        self.host.consume_send();
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.host.poll_transmit()
     }
 
     fn poll_timeout(&self) -> Option<Instant> {
@@ -454,13 +450,13 @@ impl UdpStream for ControlStream {
         self.events.pop_front()
     }
 
-    fn handle_receive(&mut self, now: Instant, addr: SocketAddr, data: &[u8]) -> Result<(), Error> {
-        if self.addr != addr {
-            trace!(stream_addr = %self.addr, recv_addr = %addr, "received packet from non stream address");
+    fn handle_receive(&mut self, now: Instant, receive: Receive) -> Result<(), Error> {
+        if self.addr != receive.source {
+            trace!(stream_addr = %self.addr, recv_addr = %receive.source, "received packet from non stream address");
             return Ok(());
         }
 
-        self.host.handle_receive(now, addr, data)?;
+        self.host.handle_receive(now, receive)?;
 
         self.do_update(now)?;
 

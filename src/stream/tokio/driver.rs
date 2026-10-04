@@ -15,13 +15,17 @@ use tokio::{
 
 use crate::{
     error::Error,
-    stream::{proto::runtime::UdpStream, sockets::new_udp_socket},
+    stream::{
+        proto::runtime::{Receive, Transmit, UdpStream},
+        sockets::new_udp_socket,
+    },
 };
 
 pub struct StreamDriver<Stream> {
     pub(crate) base_time: Instant,
     pub(crate) inner: Stream,
     pub(crate) socket: UdpSocket,
+    pub(crate) transmit: Option<Transmit>,
     pub(crate) recv_buffer: Vec<u8>,
 }
 
@@ -39,6 +43,7 @@ where
             base_time,
             inner: stream,
             socket,
+            transmit: None,
             recv_buffer: vec![0; 4096],
         })
     }
@@ -85,15 +90,26 @@ where
 
         loop {
             // -- Write
+            // Try to get next packet and write
+            if this.driver.transmit.is_none()
+                && let Some(new_transmit) = this.driver.inner.poll_transmit()
+            {
+                this.driver.transmit = Some(new_transmit);
+            }
+
+            // Try to write the available packet
             #[allow(clippy::collapsible_if)]
-            if let Some((mut addr, mut buffer)) = this.driver.inner.pending_send() {
+            if let Some(transmit) = this.driver.transmit.as_mut() {
                 if this.driver.socket.poll_send_ready(cx).is_ready() {
                     loop {
                         // Try to write
-                        match this.driver.socket.try_send_to(buffer, addr) {
+                        match this
+                            .driver
+                            .socket
+                            .try_send_to(&transmit.data, transmit.destination)
+                        {
                             Ok(_) => {
-                                // remove packet
-                                this.driver.inner.consume_send();
+                                // fallthrough
                             }
                             Err(err) if matches!(err.kind(), io::ErrorKind::WouldBlock) => {
                                 // We cannot send anymore
@@ -102,12 +118,12 @@ where
                             Err(err) => return Poll::Ready(Err(err.into())),
                         }
 
-                        if let Some((new_addr, new_buffer)) = this.driver.inner.pending_send() {
+                        if let Some(new_transmit) = this.driver.inner.poll_transmit() {
                             // Try to get next packet and write
-                            addr = new_addr;
-                            buffer = new_buffer;
+                            *transmit = new_transmit;
                         } else {
-                            // No next packet
+                            // No next packet, remove it
+                            this.driver.transmit.take();
                             break;
                         }
                     }
@@ -125,8 +141,10 @@ where
                 Poll::Ready(Ok(addr)) => {
                     this.driver.inner.handle_receive(
                         SansInstant::from_std(this.driver.base_time.into_std()),
-                        addr,
-                        recv_buffer.filled(),
+                        Receive {
+                            source: addr,
+                            data: recv_buffer.filled(),
+                        },
                     )?;
                     // Flush any response and deliver events before reading again.
                     continue;
