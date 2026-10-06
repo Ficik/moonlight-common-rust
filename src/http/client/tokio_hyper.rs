@@ -1,7 +1,7 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Empty};
+use http_body_util::{BodyExt, Full};
 use hyper::{Response, body::Incoming};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
@@ -118,7 +118,7 @@ fn build_empty_rustls_connector(timeout: Duration) -> hyper_rustls::HttpsConnect
 
 fn build_client(
     https_connector: HttpsConnector<HttpConnector>,
-) -> Client<HttpsConnector<HttpConnector>, Empty<Bytes>> {
+) -> Client<HttpsConnector<HttpConnector>, Full<Bytes>> {
     Client::builder(TokioExecutor::new())
         .pool_max_idle_per_host(0)
         .build(https_connector)
@@ -140,7 +140,7 @@ async fn response_to_bytes(mut response: Response<Incoming>) -> Result<Vec<u8>, 
 
 #[derive(Debug, Clone)]
 pub struct TokioHyperClient {
-    client: Client<HttpsConnector<HttpConnector>, Empty<Bytes>>,
+    client: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
 }
 
 impl RequestClient for TokioHyperClient {
@@ -288,5 +288,40 @@ impl RequestClient for TokioHyperClient {
         debug!("received response");
 
         Ok(response_bytes)
+    }
+}
+
+impl TokioHyperClient {
+    /// Send clipboard JSON over the existing paired, certificate-verified TLS transport.
+    /// The body is never logged. Both response size and total request time are bounded.
+    pub async fn clipboard_request(
+        &self,
+        hostport: &str,
+        body: Option<String>,
+    ) -> Result<String, Error> {
+        tokio::time::timeout(Duration::from_secs(4), async {
+            let request = hyper::Request::builder()
+                .method(if body.is_some() { "POST" } else { "GET" })
+                .uri(format!("https://{hostport}/clipboard"))
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(body.unwrap_or_default())))
+                .map_err(Error::other)?;
+            let mut response = self.client.request(request).await?;
+            if !response.status().is_success() {
+                return Err(Error::Other("Host clipboard unavailable".into()));
+            }
+            let mut bytes = Vec::new();
+            while let Some(frame) = response.frame().await {
+                if let Ok(data) = frame?.into_data() {
+                    if bytes.len() + data.len() > 6 * 1024 * 1024 + 128 {
+                        return Err(Error::Other("Clipboard response too large".into()));
+                    }
+                    bytes.extend_from_slice(&data);
+                }
+            }
+            String::from_utf8(bytes).map_err(Error::other)
+        })
+        .await
+        .map_err(|_| Error::ConnectionTimeout)?
     }
 }
