@@ -1,0 +1,24 @@
+name: Desktop library CI
+on:
+  push:
+    branches: [desktop, 'upgrade/**']
+  pull_request:
+    branches: [desktop]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        features: ['tokio-hyper tokio rustcrypto', 'ureq std rustcrypto']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Rust toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +1.99.0 fmt --all -- --check
+      - run: cargo +1.99.0 test --locked -p moonlight-common --lib --no-default-features --features "${{ matrix.features }}"
