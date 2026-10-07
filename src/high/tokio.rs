@@ -1,10 +1,10 @@
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddrV4},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 
 use tokio::{
-    net::UdpSocket,
+    net::{UdpSocket, lookup_host},
     sync::{Mutex, RwLock},
 };
 use uuid::Uuid;
@@ -510,7 +510,7 @@ where
         // Clearing cache so we refresh and can see if there's a game -> launch or resume?
         self.update().await?;
 
-        let address = self.address.clone();
+        let address = resolve_stream_address(&self.address).await?;
         let https_address = self.https_address().await?;
 
         let current_game = self.current_game().await?;
@@ -604,5 +604,56 @@ where
         }
 
         Ok(response.cancelled)
+    }
+}
+
+/// The address a stream is started against, as an IP.
+///
+/// [MoonlightStreamSetup::new](crate::stream::proto::MoonlightStreamSetup::new) parses the
+/// host's address as an [IpAddr] and connects RTSP to it, while everything over HTTP is happy
+/// with a name. So a host added by name — a DNS name on an overlay network, say — is resolved
+/// here, once per stream, and the client keeps talking to it by name. IPv4 is preferred when a
+/// name has both.
+async fn resolve_stream_address(address: &str) -> Result<String, Error> {
+    let host = address.trim_start_matches('[').trim_end_matches(']');
+    if host.parse::<IpAddr>().is_ok() {
+        return Ok(host.to_string());
+    }
+
+    let resolved: Vec<SocketAddr> = lookup_host((host, 0)).await?.collect();
+    resolved
+        .iter()
+        .find(|addr| addr.is_ipv4())
+        .or(resolved.first())
+        .map(|addr| addr.ip().to_string())
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, format!("{host} did not resolve")).into()
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn resolves_localhost_for_stream() -> Result<(), Error> {
+        let address = resolve_stream_address("localhost").await?;
+        assert!(address.parse::<IpAddr>().is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn preserves_ipv4_stream_address() -> Result<(), Error> {
+        assert_eq!(
+            resolve_stream_address("100.124.156.225").await?,
+            "100.124.156.225"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn normalizes_bracketed_ipv6_stream_address() -> Result<(), Error> {
+        assert_eq!(resolve_stream_address("[::1]").await?, "::1");
+        Ok(())
     }
 }
